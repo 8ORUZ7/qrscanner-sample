@@ -17,8 +17,8 @@
     color:#f1f5f9;padding:1.25rem;
   }
   main{width:100%;max-width:560px;display:flex;flex-direction:column;gap:1rem;text-align:center;}
-  h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;}
-  .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;}
+  h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;transition:.25s;}
+  .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;transition:.25s;}
 
   .scanner-shell{
     position:relative;width:100%;max-width:520px;aspect-ratio:1/1;
@@ -44,7 +44,7 @@
   button{
     font:inherit;padding:.8rem 1.2rem;border-radius:.85rem;border:1px solid #475569;
     background:linear-gradient(#2563eb,#1d4ed8);color:#fff;font-weight:600;letter-spacing:.45px;
-    cursor:pointer;transition:background .25s,transform .15s;
+    cursor:pointer;transition:background .25s,transform .15s,opacity .25s;
   }
   button:hover:not(:disabled){background:linear-gradient(#3b82f6,#2563eb);}
   button:focus-visible{outline:3px solid #93c5fd;outline-offset:2px;}
@@ -103,15 +103,19 @@
   a.inline-reset{color:var(--accent);cursor:pointer;font-size:.7rem;text-decoration:none;margin-left:.45rem;}
   a.inline-reset:hover{text-decoration:underline;}
 
-  footer{margin-top:.7rem;font-size:.6rem;opacity:.55;}
+  .entry-clean #appTitle,
+  .entry-clean #currentStep,
+  .entry-clean #startBtn{display:none !important;}
+  footer{margin-top:.7rem;font-size:.6rem;opacity:.55;transition:.25s;}
+  .entry-clean footer{display:none;}
 </style>
 </head>
 <body>
-<main>
-  <h1>Welcome!</h1>
+<main id="appRoot">
+  <h1 id="appTitle">Welcome!</h1>
   <div id="currentStep" class="step-indicator">Ready</div>
 
-  <!-- STEP 1: Scanner -->
+  <!-- Scanner -->
   <div class="scanner-shell" id="scannerShell" aria-label="QR scanner viewport">
     <video id="scanVideo" playsinline muted></video>
     <canvas id="scanCanvas" aria-hidden="true"></canvas>
@@ -122,14 +126,14 @@
     <button id="startBtn" type="button">Start Scan</button>
   </div>
 
-  <!-- STEP 2: Greeting -->
+  <!-- Greeting -->
   <section class="panel centered" id="greetingPanel" aria-live="assertive">
     <div style="font-size:.65rem;opacity:.65;margin:0 0 .35rem;">Greeting</div>
     <p class="greeting-msg" id="greetingMsg"></p>
     <p id="greetingMeta" style="margin:0;font-size:.65rem;opacity:.65;"></p>
   </section>
 
-  <!-- STEP 3: Selfie -->
+  <!-- Selfie -->
   <section id="selfieContainer" aria-label="Selfie verification">
     <h2 id="selfieHeader">Selfie Verification</h2>
     <div id="selfieLiveWrapper">
@@ -145,7 +149,7 @@
     <p class="note">Selfie stays only in memory (not uploaded).</p>
   </section>
 
-  <!-- STEP 4: Entry -->
+  <!-- Entry -->
   <div id="entryPanel" class="entry-wrapper" aria-live="polite">
     <p class="entry-msg">PLEASE COME IN!</p>
     <p id="resetCountdown" class="countdown"></p>
@@ -161,13 +165,12 @@
 ;(() => {
   "use strict";
 
-  /* === Config === */
   const USER_CODES = { "3OE0C1KD":"JOHN SMITH", "CKR9WLDM":"JANE DOE" };
   const THROTTLE_MS = 900;
-  const ENTRY_RESET_SECONDS = 10; // new 10 second auto refresh
+  const ENTRY_RESET_SECONDS = 10;
 
-  /* === Elements === */
   const els = {
+    appRoot: document.getElementById('appRoot'),
     step: document.getElementById('currentStep'),
     startBtn: document.getElementById('startBtn'),
     scannerShell: document.getElementById('scannerShell'),
@@ -189,7 +192,6 @@
     resetCountdown: document.getElementById('resetCountdown')
   };
 
-  /* === State === */
   const state = {
     scanStream:null,
     selfieStream:null,
@@ -202,13 +204,12 @@
     rafId:null,
     resetIntervalId:null,
     resetSecondsRemaining:0,
-    selfieStage:'idle', // idle|awaiting|captured|completed
+    selfieStage:'idle',
     selfieData:null
   };
 
   const setStep = txt => els.step.textContent = txt;
 
-  /* ====== Detector Init ====== */
   async function initDetector(){
     if ('BarcodeDetector' in window){
       try{
@@ -223,7 +224,6 @@
     state.decodeMode='jsQR';
   }
 
-  /* ====== Step 1: Start Scan ====== */
   async function startScan(){
     if (state.running) return;
     softResetUI();
@@ -235,8 +235,7 @@
       });
     }catch(e){
       console.error(e);
-      if (location.protocol !== 'https:')
-        alert('Camera requires HTTPS or localhost.');
+      if (location.protocol !== 'https:') alert('Camera requires HTTPS or localhost.');
       setStep('Camera denied');
       return;
     }
@@ -246,7 +245,7 @@
     els.scanVideo.style.display='block';
     els.placeholder.style.display='none';
     els.startBtn.disabled = true;
-    state.running=true;
+    state.running = true;
     setStep('Scanning');
     loop();
   }
@@ -265,8 +264,7 @@
           } else {
             tryJsQR().finally(()=> state.scanning=false);
           }
-        })
-        .catch(()=>{
+        }).catch(()=>{
           state.decodeMode='jsQR';
           tryJsQR().finally(()=> state.scanning=false);
         });
@@ -278,23 +276,23 @@
   function tryJsQR(){
     return new Promise(resolve=>{
       if (!window.jsQR) return resolve();
-      const v = els.scanVideo;
+      const v=els.scanVideo;
       const vw=v.videoWidth, vh=v.videoHeight;
       if (!vw || !vh) return resolve();
-      const ctx = els.scanCanvas.getContext('2d',{willReadFrequently:true});
-      const side = Math.min(vw,vh);
+      const ctx=els.scanCanvas.getContext('2d',{willReadFrequently:true});
+      const side=Math.min(vw,vh);
       const sx=(vw-side)/2, sy=(vh-side)/2;
       els.scanCanvas.width=side; els.scanCanvas.height=side;
       ctx.drawImage(v,sx,sy,side,side,0,0,side,side);
-      const img = ctx.getImageData(0,0,side,side);
-      const qr = jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
+      const img=ctx.getImageData(0,0,side,side);
+      const qr=jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
       if (qr) handleScanResult(qr.data);
       resolve();
     });
   }
 
   function handleScanResult(raw){
-    const value = (''+raw).trim();
+    const value=(''+raw).trim();
     if (!value) return;
     const now=performance.now();
     if (value===state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
@@ -304,11 +302,9 @@
     const name = USER_CODES[value.toUpperCase()];
     if (!name) return;
 
-    // Stop scanning & hide scanner
     state.running=false;
     cancelAnimationFrame(state.rafId);
     stopStream('scan');
-
     els.scannerShell.classList.remove('active');
     els.scannerShell.style.display='none';
 
@@ -316,15 +312,6 @@
     setTimeout(()=>startSelfie(name), 350);
   }
 
-  function stopStream(which){
-    const key = which==='scan' ? 'scanStream' : 'selfieStream';
-    if (state[key]){
-      state[key].getTracks().forEach(t=>t.stop());
-      state[key]=null;
-    }
-  }
-
-  /* ====== Step 2: Greeting ====== */
   function showGreeting(name, code){
     setStep('Greeting');
     els.greetingMsg.textContent=`Welcome Back ${name}!`;
@@ -334,7 +321,6 @@
     setTimeout(()=>els.greetingPanel.classList.remove('pulse'),1100);
   }
 
-  /* ====== Step 3: Selfie ====== */
   async function startSelfie(name){
     setStep('Selfie');
     els.selfieContainer.style.display='block';
@@ -366,6 +352,7 @@
     const v=els.selfieVideo;
     const w=v.videoWidth, h=v.videoHeight;
     if (!w || !h) return;
+
     const off=document.createElement('canvas');
     off.width=w; off.height=h;
     off.getContext('2d').drawImage(v,0,0,w,h);
@@ -416,9 +403,10 @@
     showEntry();
   }
 
-  /* ====== Step 4: Entry & 10s Refresh ====== */
   function showEntry(){
-    setStep('Entry');
+    // Hide header, step indicator, and start button while entry message shows
+    els.appRoot.classList.add('entry-clean');
+    setStep('');
     els.entryPanel.style.display='block';
     beginAutoRefreshCountdown();
   }
@@ -431,7 +419,7 @@
       state.resetSecondsRemaining--;
       if (state.resetSecondsRemaining <= 0){
         clearInterval(state.resetIntervalId);
-        location.reload(); // full page refresh after 10s
+        location.reload();
       } else {
         updateCountdownText();
       }
@@ -447,9 +435,15 @@
     }
   }
 
-  /* ====== Soft Reset (only for starting scan again without refresh) ====== */
+  function stopStream(which){
+    const key = which==='scan' ? 'scanStream' : 'selfieStream';
+    if (state[key]){
+      state[key].getTracks().forEach(t=>t.stop());
+      state[key]=null;
+    }
+  }
+
   function softResetUI(){
-    // Do not clear everything, just ensure start state cleanliness for a new scan attempt.
     cancelAnimationFrame(state.rafId);
     stopStream('scan');
     stopStream('selfie');
@@ -457,18 +451,15 @@
     state.scanning=false;
     state.lastValue=null;
 
+    els.appRoot.classList.remove('entry-clean');
     els.scannerShell.classList.remove('active');
-    els.scannerShell.style.display=''; // allow class to toggle
     els.scanVideo.style.display='none';
     els.placeholder.style.display='flex';
-
     els.greetingPanel.style.display='none';
     els.selfieContainer.style.display='none';
     els.entryPanel.style.display='none';
-
     els.selfiePreview.style.display='none';
     els.selfieLiveWrapper.style.display='none';
-
     els.startBtn.disabled=false;
     els.captureBtn.disabled=true;
     els.retakeBtn.disabled=true;
@@ -482,7 +473,6 @@
     }
   }
 
-  /* ====== Visibility Privacy ====== */
   document.addEventListener('visibilitychange',()=>{
     if (document.hidden){
       stopStream('scan');
@@ -492,15 +482,13 @@
     }
   });
 
-  /* ====== Events ====== */
   els.startBtn.addEventListener('click', startScan);
   els.captureBtn.addEventListener('click', captureSelfie);
   els.retakeBtn.addEventListener('click', retakeSelfie);
   els.submitSelfieBtn.addEventListener('click', submitSelfie);
 
-  /* ====== Init ====== */
   initDetector();
-  window.__qrState = state; // debug
+  window.__qrState = state;
 })();
 </script>
 </body>
