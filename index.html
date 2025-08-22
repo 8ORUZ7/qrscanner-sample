@@ -7,14 +7,12 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg:#0f172a; --panel:#1e293b; --accent:#2563eb;
-    --ok:#16a34a;
+    --bg:#0f172a; --panel:#1e293b; --accent:#2563eb; --ok:#16a34a;
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
   }
   *{box-sizing:border-box;}
   body{
     margin:0;min-height:100svh;display:flex;align-items:center;justify-content:center;
-    background:#0f172a;
     background:radial-gradient(circle at 30% 20%,#1e293b,#0f172a 70%);
     color:#f1f5f9;padding:1.25rem;
   }
@@ -22,7 +20,6 @@
   h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;}
   .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;}
 
-  /* Scanner (Step 1) */
   .scanner-shell{
     position:relative;width:100%;max-width:520px;aspect-ratio:1/1;
     background:#000;border:2px solid #334155;border-radius:1rem;overflow:hidden;
@@ -61,13 +58,12 @@
   .panel.centered{text-align:center;}
   .greeting-msg{font-size:1.35rem;margin:.3rem 0 .55rem;font-weight:760;letter-spacing:.65px;}
 
-  /* Selfie section (Step 3) */
   #selfieContainer{
     display:none;
     background:var(--panel);
     border:1px solid #334155;
     border-radius:1rem;
-    padding:1rem 1rem 1.4rem;
+    padding:1rem 1rem 1.3rem;
   }
   #selfieHeader{font-size:.8rem;letter-spacing:.5px;opacity:.7;margin:0 0 .6rem;}
   #selfieLiveWrapper{
@@ -87,28 +83,27 @@
     background:var(--panel);
     border:2px solid var(--ok);
     border-radius:1.1rem;
-    padding:2.2rem 1.2rem 2.6rem;
+    padding:2.2rem 1.2rem 2.2rem;
     box-shadow:0 0 0 2px #16a34a55,0 8px 30px -10px #16a34acc;
-    animation:fadeIn .45s ease;
+    animation:fadeIn .4s ease;
   }
   .entry-msg{
     font-size:1.95rem;
-    margin:0 0 .9rem;
+    margin:0 0 .85rem;
     font-weight:850;
     letter-spacing:1px;
     color:var(--ok);
   }
-  .countdown{font-size:.8rem;opacity:.85;margin:0;}
+  .countdown{font-size:.85rem;opacity:.9;margin:0;}
   @keyframes fadeIn{from{opacity:0;transform:scale(.96);}to{opacity:1;transform:scale(1);}}
-  .pulse{animation:pulse 1.15s ease-in-out 2;}
+  .pulse{animation:pulse 1.1s ease-in-out 2;}
   @keyframes pulse{0%{transform:scale(1);}40%{transform:scale(1.045);}100%{transform:scale(1);}}
 
-  .method-indicator{display:none;} /* removed status/method display */
   .hidden{display:none !important;}
-  a.inline-reset{color:var(--accent);cursor:pointer;font-size:.65rem;text-decoration:none;margin-left:.45rem;}
+  a.inline-reset{color:var(--accent);cursor:pointer;font-size:.7rem;text-decoration:none;margin-left:.45rem;}
   a.inline-reset:hover{text-decoration:underline;}
 
-  footer{margin-top:.9rem;font-size:.6rem;opacity:.55;}
+  footer{margin-top:.7rem;font-size:.6rem;opacity:.55;}
 </style>
 </head>
 <body>
@@ -155,6 +150,7 @@
     <p class="entry-msg">PLEASE COME IN!</p>
     <p id="resetCountdown" class="countdown"></p>
   </div>
+
 </main>
 
 <script defer src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"
@@ -165,10 +161,12 @@
 ;(() => {
   "use strict";
 
+  /* === Config === */
   const USER_CODES = { "3OE0C1KD":"JOHN SMITH", "CKR9WLDM":"JANE DOE" };
-  const AUTO_RESET_MS = 60000;
   const THROTTLE_MS = 900;
+  const ENTRY_RESET_SECONDS = 10; // new 10 second auto refresh
 
+  /* === Elements === */
   const els = {
     step: document.getElementById('currentStep'),
     startBtn: document.getElementById('startBtn'),
@@ -191,6 +189,7 @@
     resetCountdown: document.getElementById('resetCountdown')
   };
 
+  /* === State === */
   const state = {
     scanStream:null,
     selfieStream:null,
@@ -201,43 +200,43 @@
     lastValue:null,
     lastScanTs:0,
     rafId:null,
-    countdownTimer:null,
-    resetTimer:null,
-    countdownRemaining:0,
-    selfieStage:'idle',
+    resetIntervalId:null,
+    resetSecondsRemaining:0,
+    selfieStage:'idle', // idle|awaiting|captured|completed
     selfieData:null
   };
 
-  const setStep = t => els.step.textContent = t;
+  const setStep = txt => els.step.textContent = txt;
 
-  /******** Detector Init ********/
+  /* ====== Detector Init ====== */
   async function initDetector(){
     if ('BarcodeDetector' in window){
-      try {
+      try{
         const fmts = await BarcodeDetector.getSupportedFormats();
         if (fmts.includes('qr_code')){
-          state.detector = new BarcodeDetector({formats:['qr_code']});
+          state.detector = new BarcodeDetector({ formats:['qr_code'] });
           state.decodeMode='barcode';
           return;
         }
-      } catch(e){ console.warn('BarcodeDetector failed, using jsQR', e); }
+      }catch(e){ console.warn('BarcodeDetector unavailable, using jsQR', e); }
     }
     state.decodeMode='jsQR';
   }
 
-  /******** Step 1: Start Scan ********/
+  /* ====== Step 1: Start Scan ====== */
   async function startScan(){
     if (state.running) return;
-    resetAll(true); // keep current UI
+    softResetUI();
     setStep('Starting camera');
-    try {
+    try{
       state.scanStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 },
         audio:false
       });
-    } catch(e){
+    }catch(e){
       console.error(e);
-      if (location.protocol !== 'https:') alert('Camera requires HTTPS (or localhost).');
+      if (location.protocol !== 'https:')
+        alert('Camera requires HTTPS or localhost.');
       setStep('Camera denied');
       return;
     }
@@ -246,7 +245,7 @@
     await els.scanVideo.play();
     els.scanVideo.style.display='block';
     els.placeholder.style.display='none';
-    els.startBtn.disabled=true;
+    els.startBtn.disabled = true;
     state.running=true;
     setStep('Scanning');
     loop();
@@ -256,13 +255,13 @@
     if (!state.running) return;
     state.rafId = requestAnimationFrame(loop);
     if (state.scanning) return;
-    state.scanning=true;
+    state.scanning = true;
 
     if (state.detector && state.decodeMode==='barcode'){
       state.detector.detect(els.scanVideo)
         .then(codes=>{
           if (codes && codes.length){
-            handleScanResult(codes[0].rawValue,{source:'BarcodeDetector'});
+            handleScanResult(codes[0].rawValue);
           } else {
             tryJsQR().finally(()=> state.scanning=false);
           }
@@ -279,84 +278,80 @@
   function tryJsQR(){
     return new Promise(resolve=>{
       if (!window.jsQR) return resolve();
-      const v=els.scanVideo;
+      const v = els.scanVideo;
       const vw=v.videoWidth, vh=v.videoHeight;
       if (!vw || !vh) return resolve();
-      const ctx=els.scanCanvas.getContext('2d',{willReadFrequently:true});
-      // we still use a centered square for decode reliability (not a vignette effect)
-      const side=Math.min(vw,vh);
+      const ctx = els.scanCanvas.getContext('2d',{willReadFrequently:true});
+      const side = Math.min(vw,vh);
       const sx=(vw-side)/2, sy=(vh-side)/2;
       els.scanCanvas.width=side; els.scanCanvas.height=side;
       ctx.drawImage(v,sx,sy,side,side,0,0,side,side);
-      const img=ctx.getImageData(0,0,side,side);
-      const qr=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-      if(qr) handleScanResult(qr.data,{source:'jsQR'});
+      const img = ctx.getImageData(0,0,side,side);
+      const qr = jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
+      if (qr) handleScanResult(qr.data);
       resolve();
     });
   }
 
   function handleScanResult(raw){
-    const value=(''+raw).trim();
+    const value = (''+raw).trim();
     if (!value) return;
     const now=performance.now();
     if (value===state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
     state.lastValue=value;
     state.lastScanTs=now;
 
-    const code=value.toUpperCase();
-    const name=USER_CODES[code];
+    const name = USER_CODES[value.toUpperCase()];
     if (!name) return;
 
-    // stop scanning
+    // Stop scanning & hide scanner
     state.running=false;
     cancelAnimationFrame(state.rafId);
-    stopScanStream();
+    stopStream('scan');
 
-    // hide scanner
     els.scannerShell.classList.remove('active');
     els.scannerShell.style.display='none';
 
-    showGreeting(name, code);
-    setTimeout(()=> startSelfie(name), 350);
+    showGreeting(name, value.toUpperCase());
+    setTimeout(()=>startSelfie(name), 350);
   }
 
-  function stopScanStream(){
-    if (state.scanStream){
-      state.scanStream.getTracks().forEach(t=>t.stop());
-      state.scanStream=null;
+  function stopStream(which){
+    const key = which==='scan' ? 'scanStream' : 'selfieStream';
+    if (state[key]){
+      state[key].getTracks().forEach(t=>t.stop());
+      state[key]=null;
     }
-    els.scanVideo.srcObject=null;
-    els.scanVideo.style.display='none';
   }
 
-  /******** Step 2: Greeting ********/
+  /* ====== Step 2: Greeting ====== */
   function showGreeting(name, code){
     setStep('Greeting');
     els.greetingMsg.textContent=`Welcome Back ${name}!`;
     els.greetingMeta.textContent=`Code: ${code} • ${new Date().toLocaleTimeString()}`;
     els.greetingPanel.style.display='block';
     els.greetingPanel.classList.add('pulse');
-    setTimeout(()=>els.greetingPanel.classList.remove('pulse'),1200);
+    setTimeout(()=>els.greetingPanel.classList.remove('pulse'),1100);
   }
 
-  /******** Step 3: Selfie ********/
+  /* ====== Step 3: Selfie ====== */
   async function startSelfie(name){
     setStep('Selfie');
     els.selfieContainer.style.display='block';
-    state.selfieStage='awaiting';
     els.selfieInstruction.textContent=`Please take a selfie to continue, ${name}.`;
+    state.selfieStage='awaiting';
     els.selfieLiveWrapper.style.display='block';
     els.selfiePreview.style.display='none';
     els.captureBtn.disabled=true;
 
-    try {
+    try{
       state.selfieStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 },
         audio:false
       });
-    } catch(e){
-      console.error('Selfie cam error', e);
-      els.selfieInstruction.textContent='Unable to access camera. Reload/allow permission.';
+    }catch(e){
+      console.error('Selfie camera error', e);
+      els.selfieInstruction.textContent='Unable to access camera. Reload / allow permission.';
       return;
     }
     els.selfieVideo.srcObject=state.selfieStream;
@@ -371,14 +366,11 @@
     const v=els.selfieVideo;
     const w=v.videoWidth, h=v.videoHeight;
     if (!w || !h) return;
-
-    // Full-frame capture (removed square crop lines you referenced)
     const off=document.createElement('canvas');
     off.width=w; off.height=h;
     off.getContext('2d').drawImage(v,0,0,w,h);
     state.selfieData=off.toDataURL('image/jpeg',0.9);
 
-    // Show still, hide live video
     els.selfiePreview.src=state.selfieData;
     els.selfiePreview.style.display='block';
     els.selfieVideo.style.display='none';
@@ -395,11 +387,8 @@
     if (state.selfieStage!=='captured') return;
     state.selfieData=null;
     els.selfiePreview.style.display='none';
-
-    // Show live preview again
     els.selfieLiveWrapper.style.display='block';
     els.selfieVideo.style.display='block';
-
     els.captureBtn.disabled=false;
     els.retakeBtn.disabled=true;
     els.submitSelfieBtn.disabled=true;
@@ -414,110 +403,104 @@
     els.retakeBtn.disabled=true;
     els.submitSelfieBtn.disabled=true;
     els.selfieInstruction.textContent='Selfie submitted.';
-    endSelfieAndShowEntry();
+    proceedToEntry();
   }
 
-  function endSelfieAndShowEntry(){
-    if (state.selfieStream){
-      state.selfieStream.getTracks().forEach(t=>t.stop());
-      state.selfieStream=null;
-    }
+  function proceedToEntry(){
+    stopStream('selfie');
     els.selfieVideo.srcObject=null;
     els.selfieVideo.style.display='none';
     els.selfieLiveWrapper.style.display='none';
-
     els.greetingPanel.style.display='none';
     els.selfieContainer.style.display='none';
     showEntry();
   }
 
-  /******** Step 4: Entry & Reset ********/
+  /* ====== Step 4: Entry & 10s Refresh ====== */
   function showEntry(){
     setStep('Entry');
     els.entryPanel.style.display='block';
-    startResetCountdown();
+    beginAutoRefreshCountdown();
   }
 
-  function startResetCountdown(){
-    clearResetTimers();
-    state.countdownRemaining = Math.round(AUTO_RESET_MS/1000);
-    updateCountdown();
-    state.countdownTimer = setInterval(()=>{
-      state.countdownRemaining--;
-      if (state.countdownRemaining<=0){
-        resetAll();
-      } else updateCountdown();
+  function beginAutoRefreshCountdown(){
+    clearInterval(state.resetIntervalId);
+    state.resetSecondsRemaining = ENTRY_RESET_SECONDS;
+    updateCountdownText();
+    state.resetIntervalId = setInterval(()=>{
+      state.resetSecondsRemaining--;
+      if (state.resetSecondsRemaining <= 0){
+        clearInterval(state.resetIntervalId);
+        location.reload(); // full page refresh after 10s
+      } else {
+        updateCountdownText();
+      }
     },1000);
-    state.resetTimer = setTimeout(resetAll, AUTO_RESET_MS);
   }
 
-  function updateCountdown(){
-    els.resetCountdown.innerHTML = `Resetting in ${state.countdownRemaining}s... <a class="inline-reset" id="resetNowLink">(Reset Now)</a>`;
+  function updateCountdownText(){
+    els.resetCountdown.innerHTML =
+      `Refreshing in ${state.resetSecondsRemaining}s... <a class="inline-reset" id="resetNowLink">(Refresh Now)</a>`;
     const link=document.getElementById('resetNowLink');
-    if (link) link.onclick = e => { e.preventDefault(); resetAll(); };
+    if (link){
+      link.onclick = e => { e.preventDefault(); location.reload(); };
+    }
   }
 
-  function clearResetTimers(){
-    if (state.countdownTimer) clearInterval(state.countdownTimer);
-    if (state.resetTimer) clearTimeout(state.resetTimer);
-    state.countdownTimer=state.resetTimer=null;
-  }
-
-  /******** Reset ********/
-  function resetAll(keepButtonState=false){
-    clearResetTimers();
-    if (state.scanStream) { state.scanStream.getTracks().forEach(t=>t.stop()); state.scanStream=null; }
-    if (state.selfieStream){ state.selfieStream.getTracks().forEach(t=>t.stop()); state.selfieStream=null; }
-    els.scanVideo.srcObject=null;
-    els.selfieVideo.srcObject=null;
-    els.scanVideo.style.display='none';
-    els.selfieVideo.style.display='none';
+  /* ====== Soft Reset (only for starting scan again without refresh) ====== */
+  function softResetUI(){
+    // Do not clear everything, just ensure start state cleanliness for a new scan attempt.
+    cancelAnimationFrame(state.rafId);
+    stopStream('scan');
+    stopStream('selfie');
+    state.running=false;
+    state.scanning=false;
+    state.lastValue=null;
 
     els.scannerShell.classList.remove('active');
+    els.scannerShell.style.display=''; // allow class to toggle
+    els.scanVideo.style.display='none';
     els.placeholder.style.display='flex';
+
     els.greetingPanel.style.display='none';
     els.selfieContainer.style.display='none';
     els.entryPanel.style.display='none';
+
     els.selfiePreview.style.display='none';
     els.selfieLiveWrapper.style.display='none';
 
-    if (!keepButtonState){
-      els.startBtn.style.display='inline-block';
-      els.startBtn.disabled=false;
-    }
-
+    els.startBtn.disabled=false;
     els.captureBtn.disabled=true;
     els.retakeBtn.disabled=true;
     els.submitSelfieBtn.disabled=true;
     els.selfieInstruction.textContent='Please take a selfie to continue.';
+    els.step.textContent='Ready';
 
-    state.running=false;
-    state.scanning=false;
-    state.lastValue=null;
-    state.selfieStage='idle';
-    state.selfieData=null;
-
-    setStep('Ready');
+    if (state.resetIntervalId){
+      clearInterval(state.resetIntervalId);
+      state.resetIntervalId=null;
+    }
   }
 
-  /******** Privacy on Tab Hide ********/
+  /* ====== Visibility Privacy ====== */
   document.addEventListener('visibilitychange',()=>{
     if (document.hidden){
-      if (state.scanStream) { state.scanStream.getTracks().forEach(t=>t.stop()); state.scanStream=null; }
-      if (state.selfieStream){ state.selfieStream.getTracks().forEach(t=>t.stop()); state.selfieStream=null; }
+      stopStream('scan');
+      stopStream('selfie');
       state.running=false;
       cancelAnimationFrame(state.rafId);
     }
   });
 
-  /******** Events ********/
+  /* ====== Events ====== */
   els.startBtn.addEventListener('click', startScan);
   els.captureBtn.addEventListener('click', captureSelfie);
   els.retakeBtn.addEventListener('click', retakeSelfie);
   els.submitSelfieBtn.addEventListener('click', submitSelfie);
 
+  /* ====== Init ====== */
   initDetector();
-  window.__qrState = state; // debug hook
+  window.__qrState = state; // debug
 })();
 </script>
 </body>
