@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <title>QR Code Scanner</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+
 <style>
   :root {
     color-scheme: light dark;
@@ -156,7 +157,7 @@
   </section>
 
   <section class="panel centered" id="selfieSection" aria-label="Selfie capture section">
-
+    <h2 style="margin:0 0 .35rem;font-size:1rem;">Step 3: Selfie Verification</h2>
     <p id="selfieInstruction" style="margin:.1rem 0 .55rem;font-size:.8rem;opacity:.85;">
       Hi JANE DOE, please take a selfie to continue.
     </p>
@@ -390,7 +391,7 @@
 
     const now = performance.now();
     const timeSinceSuccess = now - state.lastDecodeSuccessTime;
-    // If long time without success and OpenCV ready, try it earlier
+  
     const preferCV = window.__openCvReady && timeSinceSuccess > CV_BOOST_THRESHOLD_MS;
 
     if (preferCV) {
@@ -743,4 +744,4 @@
 })();
 </script>
 </body>
-</html>
+      </html>
