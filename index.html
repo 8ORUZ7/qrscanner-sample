@@ -86,7 +86,6 @@
   .entry-clean #startBtn{display:none !important;}
   footer{margin-top:.7rem;font-size:.6rem;opacity:.55;transition:.25s;}
   .entry-clean footer{display:none;}
-  /* Fallback upload */
   #fallbackSection{display:none;flex-direction:column;gap:.6rem;align-items:center;}
   #fallbackSection input[type=file]{font-size:.75rem;max-width:100%;color:#94a3b8;}
   #fallbackError{color:var(--err);font-size:.65rem;min-height:1rem;}
@@ -98,7 +97,6 @@
   <h1 id="appTitle">Welcome!</h1>
   <div id="currentStep" class="step-indicator">Ready</div>
 
-  <!-- Scanner -->
   <div class="scanner-shell" id="scannerShell" aria-label="QR scanner viewport">
     <video id="scanVideo" playsinline muted></video>
     <canvas id="scanCanvas" aria-hidden="true"></canvas>
@@ -109,7 +107,6 @@
     <button id="startBtn" type="button">Start Scan</button>
   </div>
 
-  <!-- Fallback (iOS camera blocked) -->
   <div id="fallbackSection">
     <div style="font-size:.7rem;opacity:.75;">Camera unavailable. Use photo input:</div>
     <input id="fileInput" type="file" accept="image/*;capture=camera">
@@ -121,14 +118,12 @@
     <div id="decodeStatus"></div>
   </div>
 
-  <!-- Greeting -->
   <section class="panel centered" id="greetingPanel" aria-live="assertive">
     <div style="font-size:.65rem;opacity:.65;margin:0 0 .35rem;">Greeting</div>
     <p class="greeting-msg" id="greetingMsg"></p>
     <p id="greetingMeta" style="margin:0;font-size:.65rem;opacity:.65;"></p>
   </section>
 
-  <!-- Selfie -->
   <section id="selfieContainer" aria-label="Selfie verification">
     <h2 id="selfieHeader">Selfie Verification</h2>
     <div id="selfieLiveWrapper">
@@ -144,12 +139,10 @@
     <p class="note">Selfie stays only in memory (not uploaded).</p>
   </section>
 
-  <!-- Entry -->
   <div id="entryPanel" class="entry-wrapper" aria-live="polite">
     <p class="entry-msg">PLEASE COME IN!</p>
     <p id="resetCountdown" class="countdown"></p>
   </div>
-
 </main>
 
 <script defer src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"
@@ -160,12 +153,10 @@
 ;(() => {
   "use strict";
 
-  /******** Config ********/
   const USER_CODES = { "3OE0C1KD":"JOHN SMITH", "CKR9WLDM":"JANE DOE" };
   const THROTTLE_MS = 900;
   const ENTRY_RESET_SECONDS = 10;
 
-  /******** Elements ********/
   const els = {
     appRoot: document.getElementById('appRoot'),
     step: document.getElementById('currentStep'),
@@ -195,7 +186,6 @@
     decodeStatus: document.getElementById('decodeStatus')
   };
 
-  /******** State ********/
   const state = {
     scanStream:null,
     selfieStream:null,
@@ -215,7 +205,6 @@
   const setStep = txt => els.step.textContent = txt;
   const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  /******** Detector Init ********/
   async function initDetector(){
     if ('BarcodeDetector' in window){
       try{
@@ -225,17 +214,17 @@
           state.decodeMode='barcode';
           return;
         }
-      }catch(e){ /* fall back */ }
+      }catch(e){}
     }
     state.decodeMode='jsQR';
   }
 
-  /******** Camera Helpers ********/
+  // FRONT CAMERA (user) for scanning now
   async function getScanStream(){
-    // Relax constraints for iOS (remove aspectRatio / large ideal sizes)
+    // For iOS keep constraints light; for others you can still ask larger size
     const common = isIOS()
-      ? { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
-      : { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 };
+      ? { facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:720} }
+      : { facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280} };
     return navigator.mediaDevices.getUserMedia({ video: common, audio:false });
   }
 
@@ -260,7 +249,6 @@
     }
   }
 
-  /******** Step 1: Start Scan ********/
   async function startScan(){
     if (state.running) return;
     softResetUI();
@@ -268,32 +256,26 @@
     try{
       state.scanStream = await getScanStream();
     }catch(e){
-      // Show fallback
-      showFallback('Unable to access camera. Check permissions (Settings > Safari > Camera) or use photo upload.');
+      showFallback('Unable to access camera. Allow permission or use photo upload.');
       setStep('Camera unavailable');
       return;
     }
-
     els.scannerShell.classList.add('active');
     els.scanVideo.srcObject = state.scanStream;
-    // Force inline playback for iOS
     els.scanVideo.setAttribute('playsinline','true');
     els.scanVideo.setAttribute('autoplay','true');
     els.scanVideo.muted = true;
-
     await els.scanVideo.play();
     await waitForVideoReady(els.scanVideo);
 
-    // Mirror only if we ended up with user/front camera
-    const trackSettings = state.scanStream.getVideoTracks()[0].getSettings?.() || {};
-    const isFront = (trackSettings.facingMode || '').toLowerCase().includes('user');
-    els.scanVideo.classList.toggle('mirrored', isFront);
+    // Always mirror for front camera scanning
+    els.scanVideo.classList.add('mirrored');
 
     els.scanVideo.style.display='block';
     els.placeholder.style.display='none';
     els.startBtn.disabled = true;
     state.running = true;
-    setStep('Scanning');
+    setStep('Scanning (Front Cam)');
     loop();
   }
 
@@ -335,8 +317,7 @@
         const img=ctx.getImageData(0,0,side,side);
         const qr=jsQR(img.data,img.width,img.height,{ inversionAttempts:'attemptBoth' });
         if(qr) handleScanResult(qr.data);
-      }catch(e){
-      }
+      }catch(e){}
       resolve();
     });
   }
@@ -348,7 +329,6 @@
     if(value===state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
     state.lastValue=value;
     state.lastScanTs=now;
-
     const name=USER_CODES[value.toUpperCase()];
     if(!name) return;
 
@@ -361,7 +341,6 @@
     setTimeout(()=>startSelfie(name), 350);
   }
 
-  /******** Fallback (upload image) ********/
   function showFallback(msg){
     els.fallbackSection.style.display='flex';
     els.fallbackError.textContent = msg || '';
@@ -386,21 +365,14 @@
         c.getContext('2d').drawImage(img,0,0);
         const id=c.getContext('2d').getImageData(0,0,c.width,c.height);
         const qr=jsQR(id.data,id.width,id.height,{ inversionAttempts:'attemptBoth' });
-        if(qr){
-          els.decodeStatus.textContent='QR detected.';
-          handleScanResult(qr.data);
-        } else {
-          els.decodeStatus.textContent='No QR found in image.';
-        }
-      }catch(e){
-        els.decodeStatus.textContent='Error decoding image.';
-      }
+        if(qr){ els.decodeStatus.textContent='QR detected.'; handleScanResult(qr.data); }
+        else els.decodeStatus.textContent='No QR found.';
+      }catch(e){ els.decodeStatus.textContent='Decode error.'; }
     };
     img.onerror=()=> els.decodeStatus.textContent='Image load failed.';
     img.src=URL.createObjectURL(file);
   }
 
-  /******** Step 2: Greeting ********/
   function showGreeting(name, code){
     setStep('Greeting');
     els.greetingMsg.textContent=`Welcome Back ${name}!`;
@@ -410,7 +382,6 @@
     setTimeout(()=>els.greetingPanel.classList.remove('pulse'),1100);
   }
 
-  /******** Step 3: Selfie ********/
   async function startSelfie(name){
     setStep('Selfie');
     els.selfieContainer.style.display='block';
@@ -422,11 +393,10 @@
 
     try{
       state.selfieStream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 },
+        video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280} },
         audio:false
       });
     }catch(e){
-      // fallback: turn the selfie step into an upload if camera blocked
       els.selfieInstruction.textContent='Selfie camera blocked. Use photo input below.';
       addSelfieUploadFallback();
       return;
@@ -434,7 +404,6 @@
     els.selfieVideo.srcObject=state.selfieStream;
     await els.selfieVideo.play();
     await waitForVideoReady(els.selfieVideo);
-    // Mirror for front camera
     els.selfieVideo.classList.add('mirrored');
     els.selfieVideo.style.display='block';
     els.captureBtn.disabled=false;
@@ -442,10 +411,10 @@
 
   function addSelfieUploadFallback(){
     if (document.getElementById('selfieFileInput')) return;
-    const up = document.createElement('input');
+    const up=document.createElement('input');
     up.type='file'; up.accept='image/*;capture=camera'; up.id='selfieFileInput';
     up.style.marginTop='.6rem';
-    up.onchange = ()=>{
+    up.onchange=()=>{
       const file=up.files?.[0]; if(!file) return;
       const img=new Image();
       img.onload=()=>{
@@ -466,14 +435,10 @@
       img.src=URL.createObjectURL(file);
     };
     els.selfieContainer.appendChild(up);
-    // reuse retake to show input again
-    els.retakeBtn.onclick = ()=>{
+    els.retakeBtn.onclick=()=>{
       state.selfieData=null;
       const input=document.getElementById('selfieFileInput');
-      if (input){
-        input.value='';
-        input.style.display='block';
-      }
+      if (input){ input.value=''; input.style.display='block'; }
       els.selfiePreview.style.display='none';
       els.selfieStage='awaiting';
       els.submitSelfieBtn.disabled=true;
@@ -536,7 +501,6 @@
     showEntry();
   }
 
-  /******** Step 4: Entry ********/
   function showEntry(){
     els.appRoot.classList.add('entry-clean');
     setStep('');
@@ -566,7 +530,6 @@
     if (link) link.onclick = e => { e.preventDefault(); location.reload(); };
   }
 
-  /******** Soft Reset (pre-scan) ********/
   function softResetUI(){
     cancelAnimationFrame(state.rafId);
     stopStream('scan'); stopStream('selfie');
@@ -591,7 +554,6 @@
     }
   }
 
-  /******** Visibility (privacy) ********/
   document.addEventListener('visibilitychange',()=>{
     if (document.hidden){
       stopStream('scan');
@@ -601,7 +563,7 @@
     }
   });
 
-  /******** Fallback events ********/
+  // Fallback (unchanged)
   els.fileInput.addEventListener('change', ()=>{
     els.decodeImageBtn.disabled = !els.fileInput.files?.length;
     els.decodeStatus.textContent='';
@@ -612,15 +574,13 @@
     startScan();
   });
 
-  /******** UI Events ********/
   els.startBtn.addEventListener('click', startScan);
   els.captureBtn.addEventListener('click', captureSelfie);
   els.retakeBtn.addEventListener('click', retakeSelfie);
   els.submitSelfieBtn.addEventListener('click', submitSelfie);
 
-  /******** Init ********/
   initDetector();
-  window.__qrState = state; // debug
+  window.__qrState = state;
 })();
 </script>
 </body>
