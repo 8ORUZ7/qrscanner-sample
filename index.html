@@ -241,6 +241,8 @@
     sourceLabel: document.getElementById('sourceLabel'),
     timeLabel: document.getElementById('timeLabel'),
     placeholder: document.getElementById('placeholderMsg'),
+    startbutton: document.getElementById('startBtn'),
+    status: document.getElementById('status'),
     greetingBox: document.getElementById('greetingBox'),
     greetingMsg: document.getElementById('greetingMsg'),
     greetingMeta: document.getElementById('greetingMeta'),
@@ -328,6 +330,8 @@
     await els.video.play();
     els.video.style.display='block';
     els.placeholder.style.display='none';
+    els.startbutton.style.display='none';
+    els.status.style.display='none';
     state.running = true;
     state.paused = false;
     els.startBtn.disabled = true;
