@@ -90,6 +90,13 @@
   #fallbackSection input[type=file]{font-size:.75rem;max-width:100%;color:#94a3b8;}
   #fallbackError{color:var(--err);font-size:.65rem;min-height:1rem;}
   #decodeStatus{font-size:.6rem;opacity:.65;min-height:1rem;}
+  /* Added container for html5-qrcode */
+  #html5qrContainer{
+    position:absolute;inset:0;display:none;
+  }
+  #html5qrContainer > div{
+    width:100%!important;height:100%!important;
+  }
 </style>
 </head>
 <body>
@@ -100,6 +107,9 @@
   <div class="scanner-shell" id="scannerShell" aria-label="QR scanner viewport">
     <video id="scanVideo" playsinline muted></video>
     <canvas id="scanCanvas" aria-hidden="true"></canvas>
+    <div id="html5qrContainer">
+      <div id="html5qr" style="width:100%;height:100%;"></div>
+    </div>
     <div id="placeholderMsg">Tap Start Scan.</div>
   </div>
 
@@ -145,9 +155,15 @@
   </div>
 </main>
 
+<!-- Existing jsQR -->
 <script defer src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"
  integrity="sha384-rC5NcI3F9zeJq82cC28hvMmjr4neTJD7sPXQf8zl9uG6MS5Icnvx8e3UgFF3Rdg6"
  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<!-- Added html5-qrcode library for iOS / fallback scanning -->
+<script src="https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js"
+  integrity="sha384-rVtxnRfFL1R6uSvmDZrDjWYttlG7t9NNg4RIs+6BTAEI2r4CEWy2n96AiZVIMTdb"
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script>
 ;(() => {
@@ -183,7 +199,8 @@
     decodeImageBtn: document.getElementById('decodeImageBtn'),
     retryCameraBtn: document.getElementById('retryCameraBtn'),
     fallbackError: document.getElementById('fallbackError'),
-    decodeStatus: document.getElementById('decodeStatus')
+    decodeStatus: document.getElementById('decodeStatus'),
+    html5qrContainer: document.getElementById('html5qrContainer')
   };
 
   const state = {
@@ -199,13 +216,27 @@
     resetIntervalId:null,
     resetSecondsRemaining:0,
     selfieStage:'idle',
-    selfieData:null
+    selfieData:null,
+    // New:
+    useHtml5Qr:false,
+    html5qrcode:null,
+    html5Running:false
   };
 
   const setStep = txt => els.step.textContent = txt;
-  const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isIOS = () =>
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   async function initDetector(){
+    // Decide early if we should prefer html5-qrcode (iOS often more reliable)
+    if (isIOS()) {
+      // Prefer html5-qrcode on iOS (BarcodeDetector unsupported)
+      state.useHtml5Qr = true;
+      state.decodeMode = 'html5qrcode';
+      return;
+    }
+
     if ('BarcodeDetector' in window){
       try{
         const fmts = await BarcodeDetector.getSupportedFormats();
@@ -216,12 +247,12 @@
         }
       }catch(e){}
     }
+    // If not iOS, fallback to jsQR
     state.decodeMode='jsQR';
   }
 
-  // FRONT CAMERA (user) for scanning now
+  // FRONT CAMERA stream for legacy / jsQR path
   async function getScanStream(){
-    // For iOS keep constraints light; for others you can still ask larger size
     const common = isIOS()
       ? { facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:720} }
       : { facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280} };
@@ -249,38 +280,96 @@
     }
   }
 
+  function stopHtml5Scanner() {
+    if (state.html5qrcode && state.html5Running) {
+      state.html5qrcode.stop().catch(()=>{}).finally(()=>{
+        state.html5qrcode.clear();
+        state.html5Running = false;
+      });
+    }
+  }
+
+  function stopAllScanning(){
+    stopHtml5Scanner();
+    stopStream('scan');
+    cancelAnimationFrame(state.rafId);
+    state.running = false;
+  }
+
   async function startScan(){
-    if (state.running) return;
+    if (state.running || state.html5Running) return;
     softResetUI();
     setStep('Starting camera');
+
+    els.scannerShell.classList.add('active');
+    els.placeholder.style.display='none';
+    els.startBtn.disabled = true;
+
+    if (state.useHtml5Qr) {
+      // Use html5-qrcode path
+      els.html5qrContainer.style.display = 'block';
+      els.scanVideo.style.display='none';
+      els.scanCanvas.style.display='none';
+      try {
+        if (!state.html5qrcode) {
+          state.html5qrcode = new Html5Qrcode("html5qr", { verbose:false });
+        }
+        const config = {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1,
+          videoConstraints: { facingMode: { ideal: 'user' } }
+        };
+        await state.html5qrcode.start(
+          config.videoConstraints,
+          { fps: config.fps, qrbox: config.qrbox },
+          (decodedText/*, result*/) => {
+            const value = (decodedText||'').trim();
+            if (!value) return;
+            const now = performance.now();
+            if (value === state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
+            state.lastValue = value;
+            state.lastScanTs = now;
+            handleScanResult(value);
+          },
+          // Failure callback - ignore for noise
+          () => {}
+        );
+        state.html5Running = true;
+        state.running = true;
+        setStep('Scanning (Front Cam)');
+      } catch (err) {
+        els.startBtn.disabled = false;
+        showFallback('Unable to access camera (html5-qrcode). ' + err);
+        setStep('Camera unavailable');
+      }
+      return;
+    }
+
+    // Legacy / existing path (BarcodeDetector or jsQR)
     try{
       state.scanStream = await getScanStream();
     }catch(e){
       showFallback('Unable to access camera. Allow permission or use photo upload.');
       setStep('Camera unavailable');
+      els.startBtn.disabled = false;
       return;
     }
-    els.scannerShell.classList.add('active');
     els.scanVideo.srcObject = state.scanStream;
     els.scanVideo.setAttribute('playsinline','true');
     els.scanVideo.setAttribute('autoplay','true');
     els.scanVideo.muted = true;
     await els.scanVideo.play();
     await waitForVideoReady(els.scanVideo);
-
-    // Always mirror for front camera scanning
     els.scanVideo.classList.add('mirrored');
-
     els.scanVideo.style.display='block';
-    els.placeholder.style.display='none';
-    els.startBtn.disabled = true;
     state.running = true;
     setStep('Scanning (Front Cam)');
     loop();
   }
 
   function loop(){
-    if (!state.running) return;
+    if (!state.running || state.useHtml5Qr) return; // html5-qrcode has internal loop
     state.rafId = requestAnimationFrame(loop);
     if (state.scanning) return;
     state.scanning = true;
@@ -332,9 +421,8 @@
     const name=USER_CODES[value.toUpperCase()];
     if(!name) return;
 
-    state.running=false;
-    cancelAnimationFrame(state.rafId);
-    stopStream('scan');
+    // Stop whichever scanning method is active
+    stopAllScanning();
     els.scannerShell.classList.remove('active');
     els.scannerShell.style.display='none';
     showGreeting(name, value.toUpperCase());
@@ -440,7 +528,7 @@
       const input=document.getElementById('selfieFileInput');
       if (input){ input.value=''; input.style.display='block'; }
       els.selfiePreview.style.display='none';
-      els.selfieStage='awaiting';
+      state.selfieStage='awaiting';
       els.submitSelfieBtn.disabled=true;
       els.retakeBtn.disabled=true;
       els.selfieInstruction.textContent='Select or capture a selfie.';
@@ -532,11 +620,13 @@
 
   function softResetUI(){
     cancelAnimationFrame(state.rafId);
-    stopStream('scan'); stopStream('selfie');
-    state.running=false; state.scanning=false; state.lastValue=null;
+    stopAllScanning();
+    stopStream('selfie');
+    state.scanning=false; state.lastValue=null;
     els.appRoot.classList.remove('entry-clean');
     els.scannerShell.classList.remove('active');
     els.scanVideo.style.display='none';
+    els.html5qrContainer.style.display='none';
     els.placeholder.style.display='flex';
     els.greetingPanel.style.display='none';
     els.selfieContainer.style.display='none';
@@ -556,14 +646,13 @@
 
   document.addEventListener('visibilitychange',()=>{
     if (document.hidden){
-      stopStream('scan');
+      stopAllScanning();
       stopStream('selfie');
       state.running=false;
-      cancelAnimationFrame(state.rafId);
     }
   });
 
-  // Fallback (unchanged)
+  // Fallback
   els.fileInput.addEventListener('change', ()=>{
     els.decodeImageBtn.disabled = !els.fileInput.files?.length;
     els.decodeStatus.textContent='';
