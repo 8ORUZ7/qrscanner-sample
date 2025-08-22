@@ -140,8 +140,6 @@
 
   <div style="display:flex; gap:.6rem; justify-content:center; flex-wrap:wrap;">
     <button id="startBtn" type="button">Start Scan</button>
-    <button id="stopBtn" type="button" disabled>Stop</button>
-    <button id="pauseBtn" type="button" disabled>Pause</button>
     <button id="restartBtn" type="button" style="display:none;">Restart</button>
   </div>
 
@@ -199,19 +197,16 @@
 
 <!-- OpenCV.js (asynchronous) -->
 <script>
-  // Show CV badge while loading
   document.addEventListener('DOMContentLoaded', () => {
     const badge = document.getElementById('cvBadge');
     badge.style.display = 'inline-block';
   });
-  // Configure OpenCV module
   window.Module = {
     onRuntimeInitialized() {
       window.__openCvReady = true;
       const badge = document.getElementById('cvBadge');
       badge.textContent = 'CV Ready';
       badge.classList.add('ok');
-      // (Optional) remove after a few seconds
       setTimeout(()=>badge.style.display='none', 4000);
     }
   };
@@ -229,7 +224,6 @@
   });
   const SELFIE_REQUIRED_CODE = "CKR9WLDM";
   const AUTO_RESET_DELAY_MS = 7000;
-  // After how many ms of no successful decode we temporarily prefer OpenCV first
   const CV_BOOST_THRESHOLD_MS = 3500;
   /******************************************/
 
@@ -238,8 +232,6 @@
     video: document.getElementById('video'),
     canvas: document.getElementById('canvas'),
     startBtn: document.getElementById('startBtn'),
-    stopBtn: document.getElementById('stopBtn'),
-    pauseBtn: document.getElementById('pauseBtn'),
     restartBtn: document.getElementById('restartBtn'),
     envBadge: document.getElementById('envBadge'),
     resultBox: document.getElementById('resultBox'),
@@ -270,7 +262,7 @@
     paused:false,
     stream:null,
     track:null,
-    detector:null, // BarcodeDetector
+    detector:null,
     decodeMode:'auto',
     scanning:false,
     lastValue:null,
@@ -278,19 +270,22 @@
     throttleMs:900,
     rafId:null,
     greetedCodes:new Set(),
-    selfieStage:'idle', // idle | awaiting | captured | completed
+    selfieStage:'idle',
     selfieDataUrl:null,
     resetTimerId:null,
     resetCountdownId:null,
     resetRemainingSec:0,
     lastDecodeSuccessTime:0,
-    cvDetector:null,
-    openCvTries:0
+    cvDetector:null
   };
 
   function setBadge(text, level) {
     els.envBadge.textContent = text;
     els.envBadge.className = 'badge' + (level? ' '+level:'');
+  }
+
+  function hideScannerShell() {
+    els.shell.style.display='none';
   }
 
   async function initDetector() {
@@ -299,9 +294,9 @@
         const formats = await BarcodeDetector.getSupportedFormats();
         if (formats.includes('qr_code')) {
           state.detector = new BarcodeDetector({ formats:['qr_code']});
-          state.decodeMode='barcode';
-          setBadge('Ready (BarcodeDetector)','ok');
-          return;
+            state.decodeMode='barcode';
+            setBadge('Ready (BarcodeDetector)','ok');
+            return;
         }
       } catch(e) { console.warn('BarcodeDetector init failed', e); }
     }
@@ -311,6 +306,8 @@
 
   async function start() {
     if (state.running) return;
+    // Make sure scanner visible (for restart after auto reset)
+    els.shell.style.display='flex';
     try {
       state.stream = await navigator.mediaDevices.getUserMedia({
         video:{
@@ -322,21 +319,9 @@
         audio:false
       });
     } catch(e) {
-      console.warn('Primary getUserMedia failed', e);
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const vids = devices.filter(d=>d.kind==='videoinput');
-        const front = vids.find(d=>/front|user|face/i.test(d.label)) || vids[0];
-        if(!front) throw new Error('No camera');
-        state.stream = await navigator.mediaDevices.getUserMedia({
-          video:{deviceId:{exact:front.deviceId}},
-          audio:false
-        });
-      } catch(e2) {
-        console.error('Camera access failed', e2);
-        setBadge('Camera denied','err');
-        return;
-      }
+      console.warn('Camera access failed', e);
+      setBadge('Camera denied','err');
+      return;
     }
     state.track = state.stream.getVideoTracks()[0];
     els.video.srcObject = state.stream;
@@ -346,15 +331,13 @@
     state.running = true;
     state.paused = false;
     els.startBtn.disabled = true;
-    els.stopBtn.disabled = false;
-    els.pauseBtn.disabled = false;
     els.restartBtn.style.display='none';
     setBadge('Scanning ('+state.decodeMode+')','ok');
     state.lastDecodeSuccessTime = performance.now();
     loop();
   }
 
-  function stop() {
+  function internalStop() {
     state.running=false;
     state.paused=false;
     cancelAnimationFrame(state.rafId);
@@ -364,23 +347,7 @@
     els.video.style.display='none';
     els.placeholder.style.display='flex';
     els.startBtn.disabled=false;
-    els.stopBtn.disabled=true;
-    els.pauseBtn.disabled=true;
-    els.pauseBtn.textContent='Pause';
     setBadge('Stopped','warn');
-  }
-
-  function pauseResume() {
-    if (!state.running) return;
-    state.paused=!state.paused;
-    els.pauseBtn.textContent = state.paused? 'Resume':'Pause';
-    if (!state.paused) {
-      setBadge('Scanning ('+state.decodeMode+')','ok');
-      loop();
-    } else {
-      cancelAnimationFrame(state.rafId);
-      setBadge('Paused','warn');
-    }
   }
 
   function loop() {
@@ -391,7 +358,6 @@
 
     const now = performance.now();
     const timeSinceSuccess = now - state.lastDecodeSuccessTime;
-  
     const preferCV = window.__openCvReady && timeSinceSuccess > CV_BOOST_THRESHOLD_MS;
 
     if (preferCV) {
@@ -403,7 +369,6 @@
     } else {
       tryBarcodeThenJsQR().finally(()=>{
         if (!state.lastFrameDecoded && window.__openCvReady) {
-          // secondary OpenCV attempt this frame
           tryOpenCV().finally(()=>state.scanning=false);
         } else {
           state.scanning=false;
@@ -475,11 +440,9 @@
       const vh = v.videoHeight;
       if (!vw || !vh) return false;
 
-      // Use central square like UI
       const side = Math.min(vw,vh);
       const sx = (vw - side)/2;
       const sy = (vh - side)/2;
-      // Draw to offscreen canvas
       const off = document.createElement('canvas');
       off.width = side; off.height = side;
       const octx = off.getContext('2d');
@@ -490,7 +453,6 @@
       let gray = new cv.Mat();
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      // Light adaptive threshold to improve contrast (copy, not destructive)
       let thresh = new cv.Mat();
       cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 41, 7);
 
@@ -498,7 +460,6 @@
       let straight = new cv.Mat();
       let decoded = state.cvDetector.detectAndDecode(thresh, points, straight);
 
-      // If first pass failed, try original gray
       if (!decoded) {
         decoded = state.cvDetector.detectAndDecode(gray, points, straight);
       }
@@ -518,7 +479,6 @@
   }
 
   function interpretPoints(pointsMat) {
-    // pointsMat: 1x4x2 (if detected)
     if (!pointsMat || pointsMat.data32F === undefined || pointsMat.size().height === 0) return null;
     const data = pointsMat.data32F;
     if (!data || data.length < 8) return null;
@@ -549,8 +509,16 @@
     renderRaw(value, meta);
     const recognized = greet(value);
     highlight(meta);
-    if (recognized && value.toUpperCase() === SELFIE_REQUIRED_CODE && state.selfieStage==='idle') {
-      beginSelfieStep();
+
+    if (recognized) {
+      const upper = value.toUpperCase();
+      if (upper === SELFIE_REQUIRED_CODE && state.selfieStage==='idle') {
+        beginSelfieStep();
+      } else if (upper !== SELFIE_REQUIRED_CODE) {
+        // No selfie needed: hide scanner & stop stream.
+        hideScannerShell();
+        internalStop();
+      }
     }
   }
 
@@ -578,7 +546,8 @@
     }
     const repeat = state.greetedCodes.has(key);
     state.greetedCodes.add(key);
-    els.greetingMsg.textContent = `WELCOME BACK, ${name}!`;
+    // Updated greeting format:
+    els.greetingMsg.textContent = `Welcome ${name}!`;
     els.greetingMeta.textContent = `Code: ${key} • ${new Date().toLocaleTimeString()}${repeat?' (repeat)':''}`;
     els.greetingBox.classList.add('ok','pulse');
     els.greetingBox.style.display='block';
@@ -643,7 +612,9 @@
     els.entryMsg.style.display='block';
     els.entryMsg.textContent='PLEASE, COME IN!';
     els.entryMeta.textContent='Entry granted at ' + new Date().toLocaleTimeString();
-    if (state.running && !state.paused) pauseResume();
+    // After selfie completion hide scanner & stop.
+    hideScannerShell();
+    internalStop();
     scheduleAutoReset();
   }
 
@@ -675,7 +646,7 @@
   }
 
   function resetToStep1() {
-    stop();
+    internalStop();
     clearResetTimers();
     [els.greetingBox, els.selfieSection, els.entryBox, els.resultBox].forEach(p=>p.style.display='none');
     els.resetCountdown.style.display='none';
@@ -691,6 +662,8 @@
     state.selfieDataUrl=null;
     els.methodIndicator.textContent='';
     setBadge('Idle',null);
+    // Make scanner shell visible again for next start
+    els.shell.style.display='flex';
   }
 
   /*********** VISUAL HIGHLIGHT ***********/
@@ -722,15 +695,15 @@
     setTimeout(()=>els.canvas.style.opacity=0,220);
   }
 
-  /*********** MISC ***********/
   document.addEventListener('visibilitychange',()=>{
-    if (document.hidden && state.running && !state.paused) pauseResume();
+    if (document.hidden && state.running && !state.paused) {
+      // We no longer expose pause; just stop to free camera.
+      internalStop();
+    }
   });
 
   // Events
   els.startBtn.addEventListener('click', start);
-  els.stopBtn.addEventListener('click', stop);
-  els.pauseBtn.addEventListener('click', pauseResume);
   els.restartBtn.addEventListener('click', resetToStep1);
   els.captureBtn.addEventListener('click', captureSelfie);
   els.retakeBtn.addEventListener('click', retakeSelfie);
@@ -739,9 +712,8 @@
   // Init
   initDetector().catch(()=>setBadge('Init error','err'));
 
-  // Expose for debugging
   window.__qrState = state;
 })();
 </script>
 </body>
-      </html>
+</html>
