@@ -18,24 +18,19 @@
     color:#f1f5f9;padding:1.25rem;
   }
   main{width:100%;max-width:560px;display:flex;flex-direction:column;gap:1rem;text-align:center;}
-  h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;transition:.25s;}
-  .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;transition:.25s;}
+  h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;}
+  .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;}
   .scanner-shell{
     position:relative;width:100%;max-width:520px;aspect-ratio:1/1;background:#000;
     border:2px solid #334155;border-radius:1rem;overflow:hidden;margin:0 auto;display:none;
     align-items:center;justify-content:center;
   }
   .scanner-shell.active{display:flex;}
-  video{
-    width:100%;height:100%;object-fit:cover;background:#000;
-  }
+  video{width:100%;height:100%;object-fit:cover;background:#000;}
   .mirrored{transform:scaleX(-1);}
   #scanVideo{display:none;}
   #selfieVideo{display:none;}
-  canvas{
-    position:absolute;inset:0;width:100%;height:100%;pointer-events:none;
-    opacity:0;transition:opacity .18s ease;
-  }
+  canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity .18s ease;}
   #placeholderMsg{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:.9rem;opacity:.75;padding:1rem;text-align:center;
@@ -84,18 +79,20 @@
   .entry-clean #appTitle,
   .entry-clean #currentStep,
   .entry-clean #startBtn{display:none !important;}
-  footer{margin-top:.7rem;font-size:.6rem;opacity:.55;transition:.25s;}
+  footer{margin-top:.7rem;font-size:.6rem;opacity:.55;}
   .entry-clean footer{display:none;}
   #fallbackSection{display:none;flex-direction:column;gap:.6rem;align-items:center;}
   #fallbackSection input[type=file]{font-size:.75rem;max-width:100%;color:#94a3b8;}
   #fallbackError{color:var(--err);font-size:.65rem;min-height:1rem;}
   #decodeStatus{font-size:.6rem;opacity:.65;min-height:1rem;}
-  /* Added container for html5-qrcode */
   #html5qrContainer{
     position:absolute;inset:0;display:none;
   }
-  #html5qrContainer > div{
-    width:100%!important;height:100%!important;
+  #html5qrContainer > div{width:100%!important;height:100%!important;}
+  #scanModeBadge{
+    position:absolute;top:.45rem;left:.55rem;background:#1e293bcc;color:#fff;
+    font-size:.55rem;padding:.25rem .45rem;border-radius:.5rem;letter-spacing:.5px;
+    text-transform:uppercase;pointer-events:none;font-weight:600;
   }
 </style>
 </head>
@@ -105,6 +102,7 @@
   <div id="currentStep" class="step-indicator">Ready</div>
 
   <div class="scanner-shell" id="scannerShell" aria-label="QR scanner viewport">
+    <div id="scanModeBadge" style="display:none;"></div>
     <video id="scanVideo" playsinline muted></video>
     <canvas id="scanCanvas" aria-hidden="true"></canvas>
     <div id="html5qrContainer">
@@ -155,15 +153,21 @@
   </div>
 </main>
 
-<!-- Existing jsQR -->
-<script defer src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"
- integrity="sha384-rC5NcI3F9zeJq82cC28hvMmjr4neTJD7sPXQf8zl9uG6MS5Icnvx8e3UgFF3Rdg6"
- crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- jsQR (removed integrity to avoid SRI mismatch) -->
+<script id="lib-jsqr" src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous"></script>
 
-<!-- Added html5-qrcode library for iOS / fallback scanning -->
-<script src="https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js"
-  integrity="sha384-rVtxnRfFL1R6uSvmDZrDjWYttlG7t9NNg4RIs+6BTAEI2r4CEWy2n96AiZVIMTdb"
-  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- html5-qrcode primary (jsDelivr) -->
+<script id="lib-html5qr" src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/html5-qrcode.min.js" crossorigin="anonymous"></script>
+<script>
+  // Fallback to unpkg if primary fails
+  document.getElementById('lib-html5qr').addEventListener('error', () => {
+    const alt = document.createElement('script');
+    alt.src = 'https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js';
+    alt.crossOrigin = 'anonymous';
+    alt.onload = () => { window.__html5qrFallbackLoaded = true; };
+    document.head.appendChild(alt);
+  });
+</script>
 
 <script>
 ;(() => {
@@ -172,6 +176,7 @@
   const USER_CODES = { "3OE0C1KD":"JOHN SMITH", "CKR9WLDM":"JANE DOE" };
   const THROTTLE_MS = 900;
   const ENTRY_RESET_SECONDS = 10;
+  const HTML5QR_READY_TIMEOUT_MS = 1200; // wait max for html5-qrcode script
 
   const els = {
     appRoot: document.getElementById('appRoot'),
@@ -200,7 +205,8 @@
     retryCameraBtn: document.getElementById('retryCameraBtn'),
     fallbackError: document.getElementById('fallbackError'),
     decodeStatus: document.getElementById('decodeStatus'),
-    html5qrContainer: document.getElementById('html5qrContainer')
+    html5qrContainer: document.getElementById('html5qrContainer'),
+    modeBadge: document.getElementById('scanModeBadge')
   };
 
   const state = {
@@ -217,10 +223,10 @@
     resetSecondsRemaining:0,
     selfieStage:'idle',
     selfieData:null,
-    // New:
     useHtml5Qr:false,
     html5qrcode:null,
-    html5Running:false
+    html5Running:false,
+    html5Available:false
   };
 
   const setStep = txt => els.step.textContent = txt;
@@ -228,30 +234,52 @@
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  async function initDetector(){
-    // Decide early if we should prefer html5-qrcode (iOS often more reliable)
-    if (isIOS()) {
-      // Prefer html5-qrcode on iOS (BarcodeDetector unsupported)
-      state.useHtml5Qr = true;
-      state.decodeMode = 'html5qrcode';
-      return;
-    }
+  function setModeBadge(text, level){
+    els.modeBadge.style.display='block';
+    els.modeBadge.textContent = text;
+    els.modeBadge.style.background = level==='warn' ? '#d97706cc': level==='err' ? '#dc2626cc' : '#1e293bcc';
+  }
 
+  async function waitForHtml5Qrcode(){
+    const start = performance.now();
+    while (performance.now() - start < HTML5QR_READY_TIMEOUT_MS){
+      if (window.Html5Qrcode) {
+        state.html5Available = true;
+        return true;
+      }
+      await new Promise(r=>setTimeout(r,80));
+    }
+    return false;
+  }
+
+  async function initDetector(){
+    if (isIOS()){
+      await waitForHtml5Qrcode();
+      if (state.html5Available){
+        state.useHtml5Qr = true;
+        state.decodeMode = 'html5qrcode';
+        setModeBadge('iOS: html5-qrcode', 'ok');
+        return;
+      } else {
+        setModeBadge('iOS fallback jsQR', 'warn');
+        state.useHtml5Qr = false;
+      }
+    }
     if ('BarcodeDetector' in window){
       try{
         const fmts = await BarcodeDetector.getSupportedFormats();
         if (fmts.includes('qr_code')){
           state.detector = new BarcodeDetector({ formats:['qr_code'] });
           state.decodeMode='barcode';
+          setModeBadge('BarcodeDetector', 'ok');
           return;
         }
       }catch(e){}
     }
-    // If not iOS, fallback to jsQR
     state.decodeMode='jsQR';
+    if(!state.useHtml5Qr) setModeBadge('jsQR', 'warn');
   }
 
-  // FRONT CAMERA stream for legacy / jsQR path
   async function getScanStream(){
     const common = isIOS()
       ? { facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:720} }
@@ -279,21 +307,19 @@
       state[key]=null;
     }
   }
-
   function stopHtml5Scanner() {
     if (state.html5qrcode && state.html5Running) {
       state.html5qrcode.stop().catch(()=>{}).finally(()=>{
         state.html5qrcode.clear();
-        state.html5Running = false;
+        state.html5Running=false;
       });
     }
   }
-
   function stopAllScanning(){
     stopHtml5Scanner();
     stopStream('scan');
     cancelAnimationFrame(state.rafId);
-    state.running = false;
+    state.running=false;
   }
 
   async function startScan(){
@@ -305,48 +331,49 @@
     els.placeholder.style.display='none';
     els.startBtn.disabled = true;
 
-    if (state.useHtml5Qr) {
-      // Use html5-qrcode path
-      els.html5qrContainer.style.display = 'block';
+    if (state.useHtml5Qr && state.html5Available){
+      els.html5qrContainer.style.display='block';
       els.scanVideo.style.display='none';
       els.scanCanvas.style.display='none';
-      try {
-        if (!state.html5qrcode) {
-          state.html5qrcode = new Html5Qrcode("html5qr", { verbose:false });
-        }
+      try{
+        if (!state.html5qrcode) state.html5qrcode = new Html5Qrcode("html5qr",{verbose:false});
         const config = {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1,
-          videoConstraints: { facingMode: { ideal: 'user' } }
+          fps:10,
+          qrbox:{width:250,height:250},
+          aspectRatio:1,
+          videoConstraints:{ facingMode:{ideal:'user'} }
         };
         await state.html5qrcode.start(
           config.videoConstraints,
-          { fps: config.fps, qrbox: config.qrbox },
-          (decodedText/*, result*/) => {
-            const value = (decodedText||'').trim();
-            if (!value) return;
+          { fps:config.fps, qrbox:config.qrbox },
+          decodedText => {
+            const val = (decodedText||'').trim();
             const now = performance.now();
-            if (value === state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
-            state.lastValue = value;
-            state.lastScanTs = now;
-            handleScanResult(value);
+            if (!val) return;
+            if (val === state.lastValue && (now - state.lastScanTs) < THROTTLE_MS) return;
+            state.lastValue = val; state.lastScanTs = now;
+            handleScanResult(val);
           },
-          // Failure callback - ignore for noise
           () => {}
         );
         state.html5Running = true;
         state.running = true;
         setStep('Scanning (Front Cam)');
-      } catch (err) {
-        els.startBtn.disabled = false;
-        showFallback('Unable to access camera (html5-qrcode). ' + err);
-        setStep('Camera unavailable');
+      }catch(err){
+        // Fallback to legacy path automatically
+        state.useHtml5Qr = false;
+        state.html5Available = false;
+        els.html5qrContainer.style.display='none';
+        setModeBadge('html5-qrcode fail → jsQR', 'warn');
+        await legacyStart();
       }
       return;
     }
 
-    // Legacy / existing path (BarcodeDetector or jsQR)
+    await legacyStart();
+  }
+
+  async function legacyStart(){
     try{
       state.scanStream = await getScanStream();
     }catch(e){
@@ -369,11 +396,10 @@
   }
 
   function loop(){
-    if (!state.running || state.useHtml5Qr) return; // html5-qrcode has internal loop
+    if (!state.running || state.useHtml5Qr) return;
     state.rafId = requestAnimationFrame(loop);
     if (state.scanning) return;
     state.scanning = true;
-
     if (state.detector && state.decodeMode==='barcode'){
       state.detector.detect(els.scanVideo)
         .then(codes=>{
@@ -421,7 +447,6 @@
     const name=USER_CODES[value.toUpperCase()];
     if(!name) return;
 
-    // Stop whichever scanning method is active
     stopAllScanning();
     els.scannerShell.classList.remove('active');
     els.scannerShell.style.display='none';
@@ -478,7 +503,6 @@
     els.selfieLiveWrapper.style.display='block';
     els.selfiePreview.style.display='none';
     els.captureBtn.disabled=true;
-
     try{
       state.selfieStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280} },
