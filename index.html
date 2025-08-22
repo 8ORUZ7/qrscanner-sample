@@ -18,26 +18,30 @@
     color:#f1f5f9;padding:1.25rem;
   }
   main{width:100%;max-width:560px;display:flex;flex-direction:column;gap:1rem;text-align:center;}
-  h1{margin:0 0 .45rem;font-size:clamp(1.6rem,4.8vw,2.45rem);letter-spacing:.5px;}
+  h1{margin:0 0 .45rem;font-size:clamp(1.55rem,4.5vw,2.4rem);letter-spacing:.5px;}
   .step-indicator{font-size:.7rem;letter-spacing:.55px;text-transform:uppercase;opacity:.75;min-height:1rem;}
+
+  /* Scanner (Step 1) */
   .scanner-shell{
     position:relative;width:100%;max-width:520px;aspect-ratio:1/1;
     background:#000;border:2px solid #334155;border-radius:1rem;overflow:hidden;
-    margin:0 auto;display:flex;align-items:center;justify-content:center;
+    margin:0 auto;display:none;align-items:center;justify-content:center;
   }
-  .scanner-shell.selfie-mode{
-    border-color:#2563ebcc;
-    box-shadow:0 0 0 2px #2563eb55;
-  }
+  .scanner-shell.active{display:flex;}
   video{
-    width:100%;height:100%;object-fit:cover;display:none;transform:scaleX(-1);
+    width:100%;height:100%;object-fit:cover;transform:scaleX(-1);
   }
+  #scanVideo{display:none;}
+  #selfieVideo{display:none;}
   canvas{
     position:absolute;inset:0;width:100%;height:100%;pointer-events:none;
     opacity:0;transition:opacity .18s ease;
   }
-  .overlay{position:absolute;inset:0;pointer-events:none;transition:opacity .3s;}
-  .overlay.dim{opacity:.25;}
+  .overlay{position:absolute;inset:0;pointer-events:none;}
+  .overlay::before{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at center,rgba(0,0,0,0) 60%,rgba(0,0,0,.55) 82%);
+  }
   .frame-corner{
     position:absolute;width:2.3rem;height:2.3rem;border:4px solid var(--accent);
     filter:drop-shadow(0 0 4px var(--accent));
@@ -46,6 +50,11 @@
   .frame-corner.tr{top:10%;right:10%;border-left:0;border-bottom:0;}
   .frame-corner.bl{bottom:10%;left:10%;border-right:0;border-top:0;}
   .frame-corner.br{bottom:10%;right:10%;border-left:0;border-top:0;}
+  #placeholderMsg{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:.9rem;opacity:.75;padding:1rem;text-align:center;
+  }
+
   button{
     font:inherit;padding:.8rem 1.2rem;border-radius:.85rem;border:1px solid #475569;
     background:linear-gradient(#2563eb,#1d4ed8);color:#fff;font-weight:600;letter-spacing:.45px;
@@ -55,66 +64,91 @@
   button:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
   button:active:not(:disabled){transform:translateY(2px);}
   button:disabled{opacity:.55;cursor:not-allowed;}
+
   .badge{padding:.3rem .7rem;border-radius:1rem;background:#334155;font-weight:500;font-size:.65rem;}
   .badge.ok{background:var(--ok);color:#fff;}
   .badge.err{background:var(--err);color:#fff;}
   .badge.warn{background:var(--warn);color:#fff;}
+
   .status{min-height:1.2rem;display:flex;gap:.45rem;justify-content:center;flex-wrap:wrap;}
+
   .panel{
     background:var(--panel);padding:1rem 1.15rem;border:1px solid #334155;border-radius:1rem;
     font-size:.9rem;text-align:left;word-break:break-word;display:none;
   }
   .panel.centered{text-align:center;}
-  .greeting-msg{font-size:1.35rem;margin:.2rem 0 .55rem;font-weight:760;letter-spacing:.65px;}
-  .entry-msg{font-size:1.9rem;margin:0;font-weight:850;letter-spacing:1px;color:var(--ok);}
-  #selfiePreview{
-    max-width:100%;border-radius:.85rem;border:2px solid #334155;display:none;margin-top:.7rem;
-  }
-  .selfie-actions{display:flex;gap:.65rem;flex-wrap:wrap;justify-content:center;margin-top:.8rem;}
-  .note{font-size:.65rem;opacity:.6;margin-top:.6rem;}
-  footer{margin-top:.9rem;font-size:.6rem;opacity:.55;}
-  .pulse{animation:pulse 1.15s ease-in-out 2;}
-  @keyframes pulse{0%{transform:scale(1);}40%{transform:scale(1.045);}100%{transform:scale(1);}}
-  .countdown{font-size:.8rem;opacity:.85;margin-top:1.1rem;}
-  .method-indicator{font-size:.55rem;opacity:.55;margin-top:.3rem;min-height:.75rem;}
-  .hidden{display:none !important;}
-  a.inline-reset{color:var(--accent);cursor:pointer;font-size:.65rem;text-decoration:none;margin-left:.45rem;}
-  a.inline-reset:hover{text-decoration:underline;}
-  /* Entry-only screen */
-  #entryOnlyWrapper{
+
+  .greeting-msg{font-size:1.35rem;margin:.3rem 0 .55rem;font-weight:760;letter-spacing:.65px;}
+
+  /* Selfie section (Step 3) */
+  #selfieContainer{
     display:none;
     background:var(--panel);
-    border:2px solid #16a34a;
+    border:1px solid #334155;
+    border-radius:1rem;
+    padding:1rem 1rem 1.4rem;
+  }
+  #selfieHeader{font-size:.8rem;letter-spacing:.5px;opacity:.7;margin:0 0 .6rem;}
+  #selfieLiveWrapper{
+    position:relative;width:100%;max-width:520px;aspect-ratio:1/1;
+    background:#000;border:2px solid #334155;border-radius:1rem;
+    overflow:hidden;margin:0 auto .65rem;
+  }
+  #selfieVideo{display:block;}
+  #selfiePreview{
+    max-width:100%;border-radius:.85rem;border:2px solid #334155;display:none;margin-top:.4rem;
+  }
+  .selfie-actions{display:flex;gap:.65rem;flex-wrap:wrap;justify-content:center;margin-top:.75rem;}
+  .note{font-size:.63rem;opacity:.6;margin-top:.55rem;}
+
+  .entry-wrapper{
+    display:none;
+    background:var(--panel);
+    border:2px solid var(--ok);
     border-radius:1.1rem;
     padding:2.2rem 1.2rem 2.6rem;
     box-shadow:0 0 0 2px #16a34a55,0 8px 30px -10px #16a34acc;
-    animation:fadeIn .5s ease;
+    animation:fadeIn .45s ease;
   }
+  .entry-msg{
+    font-size:1.95rem;
+    margin:0 0 .9rem;
+    font-weight:850;
+    letter-spacing:1px;
+    color:var(--ok);
+  }
+  .countdown{font-size:.8rem;opacity:.85;margin:0;}
   @keyframes fadeIn{from{opacity:0;transform:scale(.96);}to{opacity:1;transform:scale(1);}}
+  .pulse{animation:pulse 1.15s ease-in-out 2;}
+  @keyframes pulse{0%{transform:scale(1);}40%{transform:scale(1.045);}100%{transform:scale(1);}}
+
+  .method-indicator{font-size:.55rem;opacity:.55;min-height:.75rem;}
+  .hidden{display:none !important;}
+  a.inline-reset{color:var(--accent);cursor:pointer;font-size:.65rem;text-decoration:none;margin-left:.45rem;}
+  a.inline-reset:hover{text-decoration:underline;}
+
+  footer{margin-top:.9rem;font-size:.6rem;opacity:.55;}
 </style>
 </head>
 <body>
 <main>
-  <h1>QR Access</h1>
-  <div id="currentStep" class="step-indicator">Ready</div>
+  <h1>QR Scanner</h1>
+  <div id="currentStep" class="step-indicator">Step 1: Ready</div>
 
-  <!-- Scanner (kept visible through selfie) -->
+  <!-- STEP 1: Scanner -->
   <div class="scanner-shell" id="scannerShell" aria-label="QR scanner viewport">
-    <video id="video" playsinline muted></video>
-    <canvas id="canvas" aria-hidden="true"></canvas>
-    <div class="overlay" id="overlay" aria-hidden="true">
+    <video id="scanVideo" playsinline muted></video>
+    <canvas id="scanCanvas" aria-hidden="true"></canvas>
+    <div class="overlay" aria-hidden="true">
       <div class="frame-corner tl"></div>
       <div class="frame-corner tr"></div>
       <div class="frame-corner bl"></div>
       <div class="frame-corner br"></div>
     </div>
-    <div id="placeholderMsg"
-      style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.95rem;opacity:.75;padding:1rem;text-align:center;">
-      Tap Start Scan.
-    </div>
+    <div id="placeholderMsg">Tap Start Scan.</div>
   </div>
 
-  <!-- Single start button -->
+  <!-- Start Button (only interactive button at beginning) -->
   <div>
     <button id="startBtn" type="button">Start Scan</button>
   </div>
@@ -122,39 +156,40 @@
   <div class="status"><span class="badge" id="envBadge">Idle</span></div>
   <div class="method-indicator" id="methodIndicator"></div>
 
-  <!-- Greeting -->
-  <section class="panel centered" id="greetingBox" aria-live="assertive">
-    <div style="font-size:.65rem;opacity:.65;margin:0 0 .4rem;">Greeting</div>
+  <!-- STEP 2: Greeting -->
+  <section class="panel centered" id="greetingPanel" aria-live="assertive">
+    <div style="font-size:.65rem;opacity:.65;margin:0 0 .35rem;">Step 2: Greeting</div>
     <p class="greeting-msg" id="greetingMsg"></p>
     <p id="greetingMeta" style="margin:0;font-size:.65rem;opacity:.65;"></p>
   </section>
 
-  <!-- Selfie -->
-  <section class="panel centered" id="selfieSection" aria-label="Selfie verification">
-    <div style="font-size:.65rem;opacity:.65;margin:0 0 .45rem;">Selfie Verification</div>
-    <p id="selfieInstruction" style="margin:.2rem 0 .65rem;font-size:.82rem;opacity:.9;">
-      Please take a selfie to continue.
-    </p>
-    <!-- Live preview is the video above. Captured still below. -->
+  <!-- STEP 3: Selfie (has its own live preview distinct from scanner) -->
+  <section id="selfieContainer" aria-label="Selfie verification">
+    <h2 id="selfieHeader">Step 3: Selfie Verification</h2>
+    <div id="selfieLiveWrapper">
+      <video id="selfieVideo" playsinline muted></video>
+      <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at center,rgba(0,0,0,0) 55%,rgba(0,0,0,.45) 87%);"></div>
+    </div>
+    <p id="selfieInstruction" style="margin:.2rem 0 .55rem;font-size:.8rem;opacity:.9;">Please take a selfie to continue.</p>
     <img id="selfiePreview" alt="Selfie preview" />
     <div class="selfie-actions">
       <button id="captureBtn" type="button" disabled>Capture Selfie</button>
       <button id="retakeBtn" type="button" disabled>Retake</button>
       <button id="submitSelfieBtn" type="button" disabled>Submit</button>
     </div>
-    <p class="note">Selfie stays only on this device (not uploaded).</p>
+    <p class="note">Selfie is never uploaded (kept only in memory).</p>
   </section>
 
-  <!-- Entry Only Screen -->
-  <div id="entryOnlyWrapper">
+  <!-- STEP 4: Entry (only message visible) -->
+  <div id="entryPanel" class="entry-wrapper" aria-live="polite">
     <p class="entry-msg">PLEASE COME IN!</p>
-    <p id="entryCountdown" class="countdown"></p>
+    <p id="resetCountdown" class="countdown"></p>
   </div>
 
-  <footer>Flow: Start → Greeting → Selfie (live preview) → PLEASE COME IN! → Auto Reset (60s)</footer>
+  <footer>Sequence: Scan → Greeting → Selfie (new live preview) → Entry (60s auto reset)</footer>
 </main>
 
-<!-- jsQR fallback (if BarcodeDetector not available) -->
+<!-- jsQR (fallback) -->
 <script defer src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"
  integrity="sha384-rC5NcI3F9zeJq82cC28hvMmjr4neTJD7sPXQf8zl9uG6MS5Icnvx8e3UgFF3Rdg6"
  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -163,59 +198,71 @@
 ;(() => {
   "use strict";
 
-  /******** CONFIG ********/
+  /**************** CONFIG ****************/
   const USER_CODES = {
-    "3OE0C1KD": "JOHN SMITH",
-    "CKR9WLDM": "JANE DOE"
+    "3OE0C1KD":"JOHN SMITH",
+    "CKR9WLDM":"JANE DOE"
   };
-  const AUTO_RESET_MS = 60000;          // 60 seconds
-  const THROTTLE_MS   = 900;
-  /************************/
+  const AUTO_RESET_MS = 60000;
+  const THROTTLE_MS = 900;
+  /****************************************/
 
   const els = {
     step: document.getElementById('currentStep'),
-    shell: document.getElementById('scannerShell'),
-    overlay: document.getElementById('overlay'),
-    video: document.getElementById('video'),
-    canvas: document.getElementById('canvas'),
     startBtn: document.getElementById('startBtn'),
-    placeholder: document.getElementById('placeholderMsg'),
     envBadge: document.getElementById('envBadge'),
     methodIndicator: document.getElementById('methodIndicator'),
-    greetingBox: document.getElementById('greetingBox'),
+
+    // Step 1
+    scannerShell: document.getElementById('scannerShell'),
+    scanVideo: document.getElementById('scanVideo'),
+    scanCanvas: document.getElementById('scanCanvas'),
+    placeholder: document.getElementById('placeholderMsg'),
+
+    // Step 2
+    greetingPanel: document.getElementById('greetingPanel'),
     greetingMsg: document.getElementById('greetingMsg'),
     greetingMeta: document.getElementById('greetingMeta'),
-    selfieSection: document.getElementById('selfieSection'),
+
+    // Step 3
+    selfieContainer: document.getElementById('selfieContainer'),
+    selfieVideo: document.getElementById('selfieVideo'),
     selfieInstruction: document.getElementById('selfieInstruction'),
     selfiePreview: document.getElementById('selfiePreview'),
     captureBtn: document.getElementById('captureBtn'),
     retakeBtn: document.getElementById('retakeBtn'),
     submitSelfieBtn: document.getElementById('submitSelfieBtn'),
-    entryOnlyWrapper: document.getElementById('entryOnlyWrapper'),
-    entryCountdown: document.getElementById('entryCountdown')
+
+    // Step 4
+    entryPanel: document.getElementById('entryPanel'),
+    resetCountdown: document.getElementById('resetCountdown')
   };
 
   const state = {
-    running:false,
-    stream:null,
+    scanStream:null,
+    selfieStream:null,
     detector:null,
     decodeMode:'auto',
+    running:false,
     scanning:false,
     lastValue:null,
     lastScanTs:0,
     rafId:null,
-    selfieStage:'idle',
-    selfieData:null,
-    resetTimer:null,
     countdownTimer:null,
-    countdownRemaining:0
+    resetTimer:null,
+    countdownRemaining:0,
+    selfieStage:'idle', // idle|awaiting|captured|completed
+    selfieData:null
   };
 
-  const setBadge = (t,l)=>{ els.envBadge.textContent=t; els.envBadge.className='badge'+(l?' '+l:''); };
+  const setBadge = (t,l) => {
+    els.envBadge.textContent = t;
+    els.envBadge.className = 'badge' + (l ? ' '+l : '');
+  };
   const setStep = t => els.step.textContent = t;
 
-  /******** Initialization ********/
-  async function initDetector(){
+  /*********** Step 1: Scanner ***********/
+  async function initDetector() {
     if ('BarcodeDetector' in window) {
       try {
         const fmts = await BarcodeDetector.getSupportedFormats();
@@ -225,52 +272,50 @@
           setBadge('Ready (BarcodeDetector)','ok');
           return;
         }
-      } catch(e){ console.warn('BarcodeDetector init failed', e); }
+      } catch(e){ console.warn('BarcodeDetector failed', e); }
     }
     state.decodeMode='jsQR';
     setBadge('Ready (jsQR)','warn');
   }
 
-  /******** Start Scan ********/
-  async function startScan(){
-    if (state.running) return;
-    resetAll(); // start fresh
+  async function startScan() {
+    resetAll(); // ensure clean
     setStep('Starting camera');
     try {
-      state.stream = await navigator.mediaDevices.getUserMedia({
+      state.scanStream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 },
         audio:false
       });
-    } catch(e){
+    } catch(e) {
       console.error(e);
-      if (location.protocol!=='https:') alert('Camera requires HTTPS or localhost.');
+      if (location.protocol !== 'https:') alert('Camera requires HTTPS (or localhost).');
       setBadge('Camera denied','err');
       setStep('Camera error');
       return;
     }
-    els.video.srcObject = state.stream;
-    await els.video.play();
-    els.video.style.display='block';
+    els.scannerShell.classList.add('active');
+    els.scanVideo.srcObject = state.scanStream;
+    await els.scanVideo.play();
+    els.scanVideo.style.display='block';
     els.placeholder.style.display='none';
-    state.running=true;
     els.startBtn.disabled=true;
+    state.running=true;
     setBadge('Scanning ('+state.decodeMode+')','ok');
-    setStep('Scan a QR Code');
+    setStep('Scanning');
     loop();
   }
 
-  /******** Scan Loop ********/
-  function loop(){
+  function loop() {
     if (!state.running) return;
     state.rafId = requestAnimationFrame(loop);
     if (state.scanning) return;
-    state.scanning=true;
+    state.scanning = true;
 
-    if (state.detector && state.decodeMode==='barcode'){
-      state.detector.detect(els.video)
+    if (state.detector && state.decodeMode === 'barcode') {
+      state.detector.detect(els.scanVideo)
         .then(codes=>{
-          if (codes && codes.length){
-            handleResult(codes[0].rawValue,{source:'BarcodeDetector'});
+          if (codes && codes.length) {
+            handleScanResult(codes[0].rawValue,{source:'BarcodeDetector'});
           } else {
             tryJsQR().finally(()=> state.scanning=false);
           }
@@ -285,25 +330,25 @@
     }
   }
 
-  function tryJsQR(){
+  function tryJsQR() {
     return new Promise(resolve=>{
       if (!window.jsQR) return resolve();
-      const ctx=els.canvas.getContext('2d',{willReadFrequently:true});
-      const v=els.video, vw=v.videoWidth, vh=v.videoHeight;
+      const ctx = els.scanCanvas.getContext('2d',{willReadFrequently:true});
+      const v = els.scanVideo;
+      const vw=v.videoWidth, vh=v.videoHeight;
       if (!vw || !vh) return resolve();
-      const side=Math.min(vw,vh);
+      const side = Math.min(vw,vh);
       const sx=(vw-side)/2, sy=(vh-side)/2;
-      els.canvas.width=side; els.canvas.height=side;
+      els.scanCanvas.width=side; els.scanCanvas.height=side;
       ctx.drawImage(v,sx,sy,side,side,0,0,side,side);
-      const img=ctx.getImageData(0,0,side,side);
-      const qr=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-      if(qr) handleResult(qr.data,{source:'jsQR',location:qr.location});
+      const img = ctx.getImageData(0,0,side,side);
+      const qr = jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if (qr) handleScanResult(qr.data,{source:'jsQR',location:qr.location});
       resolve();
     });
   }
 
-  /******** Handle Result ********/
-  function handleResult(raw, meta){
+  function handleScanResult(raw, meta) {
     const value=(''+raw).trim();
     if (!value) return;
     const now=performance.now();
@@ -317,42 +362,91 @@
     const name=USER_CODES[code];
     if (!name) return;
 
-    // Stop scanning (keep preview on for selfie)
+    // Stop scanning entirely
     state.running=false;
     cancelAnimationFrame(state.rafId);
+    stopScanStream();
 
-    // Hide Start button
-    els.startBtn.classList.add('hidden');
+    // Hide scanner
+    els.scannerShell.classList.remove('active');
+    els.scannerShell.style.display='none';
 
-    // Make scanner visually transition to selfie mode (fade frame corners)
-    els.overlay.classList.add('dim');
-    els.shell.classList.add('selfie-mode');
+    // Step 2: Greeting
+    showGreeting(name, code);
 
-    // Greeting
-    els.greetingMsg.textContent=`Welcome ${name}!`;
-    els.greetingMeta.textContent=`Code: ${code} • ${new Date().toLocaleTimeString()}`;
-    els.greetingBox.style.display='block';
-    els.greetingBox.classList.add('pulse');
-    setTimeout(()=>els.greetingBox.classList.remove('pulse'),1100);
-    setStep('Greeting');
-
-    // Selfie step for all recognized codes
-    startSelfie(name);
+    // Immediately move to Step 3 (selfie) with a NEW camera stream
+    setTimeout(()=> startSelfie(name), 400);
   }
 
-  /******** Selfie ********/
-  function startSelfie(name){
+  function highlight(location){
+    const ctx=els.scanCanvas.getContext('2d');
+    ctx.clearRect(0,0,els.scanCanvas.width,els.scanCanvas.height);
+    if (!location){ flashCanvas(); return; }
+    ctx.save();
+    ctx.strokeStyle='#16a34a'; ctx.lineWidth=3;
+    const pts=[location.topLeftCorner,location.topRightCorner,location.bottomRightCorner,location.bottomLeftCorner];
+    if (pts.every(Boolean)){
+      ctx.beginPath();
+      pts.forEach((p,i)=> i? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+    flashCanvas();
+  }
+  function flashCanvas(){
+    els.scanCanvas.style.opacity=.9;
+    setTimeout(()=>els.scanCanvas.style.opacity=0,220);
+  }
+
+  function stopScanStream(){
+    if (state.scanStream){
+      state.scanStream.getTracks().forEach(t=>t.stop());
+      state.scanStream=null;
+    }
+    els.scanVideo.srcObject=null;
+    els.scanVideo.style.display='none';
+  }
+
+  /*********** Step 2: Greeting ***********/
+  function showGreeting(name, code){
+    setStep('Greeting');
+    els.greetingMsg.textContent = `Welcome Back ${name}!`;
+    els.greetingMeta.textContent = `Code: ${code} • ${new Date().toLocaleTimeString()}`;
+    els.greetingPanel.style.display='block';
+    els.greetingPanel.classList.add('pulse');
+    setTimeout(()=>els.greetingPanel.classList.remove('pulse'),1200);
+  }
+
+  /*********** Step 3: Selfie ***********/
+  async function startSelfie(name){
+    setStep('Selfie');
+    els.selfieContainer.style.display='block';
     state.selfieStage='awaiting';
-    els.selfieInstruction.textContent=`Please take a selfie to continue, ${name}.`;
+    els.selfieInstruction.textContent = `Please take a selfie to continue, ${name}.`;
+
+    // Acquire a NEW stream for selfie preview
+    try {
+      state.selfieStream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:{ideal:'user'}, width:{ideal:1280}, height:{ideal:1280}, aspectRatio:1 },
+        audio:false
+      });
+    } catch(e){
+      console.error('Selfie camera error', e);
+      els.selfieInstruction.textContent='Unable to access camera. Reload and allow permission.';
+      return;
+    }
+    els.selfieVideo.srcObject=state.selfieStream;
+    await els.selfieVideo.play();
+    els.selfieVideo.style.display='block';
     els.captureBtn.disabled=false;
-    els.selfieSection.style.display='block';
-    setStep('Selfie Verification');
   }
 
   function captureSelfie(){
     if (!['awaiting','captured'].includes(state.selfieStage)) return;
-    if (!state.stream) return alert('Camera not active.');
-    const v=els.video, vw=v.videoWidth, vh=v.videoHeight;
+    if (!state.selfieStream) return alert('Camera not active.');
+    const v=els.selfieVideo, vw=v.videoWidth, vh=v.videoHeight;
+    if (!vw || !vh) return;
     const side=Math.min(vw,vh);
     const sx=(vw-side)/2, sy=(vh-side)/2;
     const off=document.createElement('canvas');
@@ -386,29 +480,32 @@
     els.retakeBtn.disabled=true;
     els.submitSelfieBtn.disabled=true;
     els.selfieInstruction.textContent='Selfie submitted.';
+    endSelfieAndShowEntry();
+  }
 
-    // Hide EVERYTHING except the single "PLEASE COME IN!" screen
-    hideForEntryOnly();
-    showEntryOnly();
+  function endSelfieAndShowEntry(){
+    // Stop selfie stream
+    if (state.selfieStream){
+      state.selfieStream.getTracks().forEach(t=>t.stop());
+      state.selfieStream=null;
+    }
+    els.selfieVideo.srcObject=null;
+    els.selfieVideo.style.display='none';
+
+    // Hide everything except entry message
+    els.greetingPanel.style.display='none';
+    els.selfieContainer.style.display='none';
+
+    showEntry();
+  }
+
+  /*********** Step 4: Entry + Reset ***********/
+  function showEntry(){
+    setStep('Entry');
+    els.entryPanel.style.display='block';
     startResetCountdown();
   }
 
-  /******** Entry Only Screen ********/
-  function hideForEntryOnly(){
-    // Stop camera
-    stopVideoStream();
-    // Hide scanner shell, greeting, selfie
-    els.shell.style.display='none';
-    els.greetingBox.style.display='none';
-    els.selfieSection.style.display='none';
-  }
-
-  function showEntryOnly(){
-    els.entryOnlyWrapper.style.display='block';
-    setStep('Entry – Resetting Soon');
-  }
-
-  /******** Reset Countdown ********/
   function startResetCountdown(){
     clearResetTimers();
     state.countdownRemaining = Math.round(AUTO_RESET_MS/1000);
@@ -423,100 +520,87 @@
   }
 
   function updateCountdown(){
-    els.entryCountdown.innerHTML =
-      `Resetting in ${state.countdownRemaining}s... <a class="inline-reset" id="resetNowLink">(Reset Now)</a>`;
+    els.resetCountdown.innerHTML = `Resetting in ${state.countdownRemaining}s... <a class="inline-reset" id="resetNowLink">(Reset Now)</a>`;
     const link=document.getElementById('resetNowLink');
     if (link) link.onclick = e => { e.preventDefault(); resetAll(); };
   }
 
   function clearResetTimers(){
-    if (state.resetTimer) clearTimeout(state.resetTimer);
     if (state.countdownTimer) clearInterval(state.countdownTimer);
-    state.resetTimer=state.countdownTimer=null;
+    if (state.resetTimer) clearTimeout(state.resetTimer);
+    state.countdownTimer=state.resetTimer=null;
   }
 
-  /******** Utilities ********/
-  function stopVideoStream(){
-    if (state.stream){
-      state.stream.getTracks().forEach(t=>t.stop());
-      state.stream=null;
-    }
-    els.video.srcObject=null;
-    els.video.style.display='none';
-  }
-
-  function highlight(location){
-    const ctx=els.canvas.getContext('2d');
-    ctx.clearRect(0,0,els.canvas.width,els.canvas.height);
-    if (!location){ flashCanvas(); return; }
-    ctx.save();
-    ctx.strokeStyle='#16a34a'; ctx.lineWidth=3;
-    const pts=[location.topLeftCorner,location.topRightCorner,location.bottomRightCorner,location.bottomLeftCorner];
-    if (pts.every(Boolean)){
-      ctx.beginPath();
-      pts.forEach((p,i)=> i? ctx.lineTo(p.x,p.y): ctx.moveTo(p.x,p.y));
-      ctx.closePath(); ctx.stroke();
-    }
-    ctx.restore();
-    flashCanvas();
-  }
-  function flashCanvas(){ els.canvas.style.opacity=.9; setTimeout(()=>els.canvas.style.opacity=0,220); }
-
-  function stopCameraIfRunning(){
-    if (state.running){
-      state.running=false;
-      cancelAnimationFrame(state.rafId);
-      stopVideoStream();
-      setBadge('Stopped','warn');
-    }
-  }
-
+  /*********** Reset All ***********/
   function resetAll(){
     clearResetTimers();
-    stopCameraIfRunning();
 
-    // Restore scanner shell
-    els.shell.style.display='flex';
-    els.overlay.classList.remove('dim');
-    els.shell.classList.remove('selfie-mode');
+    // Stop any streams
+    if (state.scanStream) stopScanStream();
+    if (state.selfieStream){
+      state.selfieStream.getTracks().forEach(t=>t.stop());
+      state.selfieStream=null;
+    }
+    els.selfieVideo.srcObject=null;
+    els.selfieVideo.style.display='none';
 
-    // Hide panels
-    [els.greetingBox, els.selfieSection, els.entryOnlyWrapper].forEach(p=>p.style.display='none');
+    // Hide panels and sections
+    els.scannerShell.classList.remove('active');
+    els.scannerShell.style.display=''; // keep available but hidden by absence of 'active'
+    els.placeholder.style.display='flex';
+    els.greetingPanel.style.display='none';
+    els.selfieContainer.style.display='none';
+    els.entryPanel.style.display='none';
     els.selfiePreview.style.display='none';
 
-    // Reset buttons & instructions
+    // Reset controls
+    els.startBtn.disabled=false;
+    els.startBtn.classList.remove('hidden');
     els.captureBtn.disabled=true;
     els.retakeBtn.disabled=true;
     els.submitSelfieBtn.disabled=true;
     els.selfieInstruction.textContent='Please take a selfie to continue.';
     els.methodIndicator.textContent='';
-    els.placeholder.style.display='flex';
-
-    // Start button restored
-    els.startBtn.classList.remove('hidden');
-    els.startBtn.disabled=false;
 
     // State
+    state.running=false;
+    state.scanning=false;
     state.lastValue=null;
     state.selfieStage='idle';
     state.selfieData=null;
-    state.running=false;
 
     setBadge('Idle');
     setStep('Ready');
   }
 
-  /******** Events ********/
+  /*********** Visibility / Privacy ***********/
+  document.addEventListener('visibilitychange',()=>{
+    if (document.hidden){
+      // Stop active streams for privacy, user can restart
+      if (state.scanStream) stopScanStream();
+      if (state.selfieStream){
+        state.selfieStream.getTracks().forEach(t=>t.stop());
+        state.selfieStream=null;
+        els.selfieVideo.srcObject=null;
+        els.selfieVideo.style.display='none';
+      }
+      state.running=false;
+      cancelAnimationFrame(state.rafId);
+      setBadge('Hidden','warn');
+    }
+  });
+
+  /*********** Event Listeners ***********/
   els.startBtn.addEventListener('click', startScan);
   els.captureBtn.addEventListener('click', captureSelfie);
   els.retakeBtn.addEventListener('click', retakeSelfie);
   els.submitSelfieBtn.addEventListener('click', submitSelfie);
-  document.addEventListener('visibilitychange',()=>{ if (document.hidden) stopCameraIfRunning(); });
 
-  // Init
+  /*********** Init ***********/
   initDetector();
-  window.__qrState = state; // debug
 
+  // Debug exposure (optional)
+  window.__qrState = state;
 })();
 </script>
 </body>
