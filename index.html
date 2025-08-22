@@ -218,6 +218,8 @@
     scanVideo: document.getElementById('scanVideo'),
     scanCanvas: document.getElementById('scanCanvas'),
     placeholder: document.getElementById('placeholderMsg'),
+    startbutton: document.getElementById('startBtn'),
+    status: document.getElementById('status')
 
     // Step 2
     greetingPanel: document.getElementById('greetingPanel'),
@@ -298,6 +300,8 @@
     await els.scanVideo.play();
     els.scanVideo.style.display='block';
     els.placeholder.style.display='none';
+    els.startbutton.style.display='none';
+    els.status.style.display='none';
     els.startBtn.disabled=true;
     state.running=true;
     setBadge('Scanning ('+state.decodeMode+')','ok');
